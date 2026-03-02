@@ -1,0 +1,22 @@
+const CONFIG = {
+  DEFAULT_CRYPTO_SYMBOLS: ["btc", "eth", "sol", "xrp"] as const,
+  GAMMA_BASE_URL: "https://gamma-api.polymarket.com",
+  CLOB_BASE_URL: "https://clob.polymarket.com",
+  CLOB_CHAIN_ID: 137,
+  WS_BASE_URL: "wss://ws-subscriptions-clob.polymarket.com/ws",
+  MARKET_WS_PATH: "/market",
+  USER_WS_PATH: "/user",
+  DEFAULT_RECONNECT_DELAY_MS: 2_000,
+  DEFAULT_ORDER_CONFIRMATION_TIMEOUT_MS: 60_000,
+  DEFAULT_PAPER_MODE_DELAY_MS: 3_000,
+  DEFAULT_ORDER_EXPIRATION_MS: 75_000,
+  DEFAULT_ORDER_TICK_SIZE: "0.01",
+  ORDER_PRICE_DECIMALS: 4,
+  ORDER_SIZE_DECIMALS: 2,
+  ORDER_AMOUNT_DECIMALS: 4,
+  MAX_PRICE: 1,
+  SAFE_MAX_BUY_AMOUNT: 5,
+  DEFAULT_MAX_ALLOWED_SLIPPAGE: 0.02
+} as const;
+
+export default CONFIG;
