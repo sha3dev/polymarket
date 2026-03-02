@@ -1,7 +1,8 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import type { WebSocketFactory, WebSocketLike } from "../src/shared/contracts.ts";
+import type { Clock, WebSocketFactory, WebSocketLike } from "../src/shared/contracts.ts";
+import { MarketStreamConnectionError } from "../src/stream/market-stream-connection-error.ts";
 import { MarketStreamService } from "../src/stream/market-stream-service.ts";
 
 class FakeWebSocket implements WebSocketLike {
@@ -22,8 +23,10 @@ class FakeWebSocket implements WebSocketLike {
   }
 
   public close(): void {
-    this.readyState = this.CLOSED;
-    this.emit("close");
+    if (this.readyState !== this.CLOSED) {
+      this.readyState = this.CLOSED;
+      this.emit("close");
+    }
   }
 
   public emit(event: "open" | "close" | "error" | "message", ...args: unknown[]): void {
@@ -79,4 +82,97 @@ test("MarketStreamService subscribes/unsubscribes and updates asset cache from m
   assert.equal(hasUnsubscribePayload, true);
 
   await service.disconnect();
+});
+
+test("MarketStreamService forwards parsed events to listeners and remove handler works", async () => {
+  const sockets: FakeWebSocket[] = [];
+  const webSocketFactory: WebSocketFactory = {
+    create(): WebSocketLike {
+      const socket = new FakeWebSocket();
+      sockets.push(socket);
+      setImmediate(() => {
+        socket.readyState = socket.OPEN;
+        socket.emit("open");
+      });
+      return socket;
+    }
+  };
+  const service = MarketStreamService.create({ webSocketFactory });
+  const receivedTypes: string[] = [];
+  const remove = service.addListener({
+    listener(event) {
+      receivedTypes.push(event.type);
+    }
+  });
+
+  await service.connect();
+  sockets[0]!.emit("message", JSON.stringify({ event_type: "last_trade_price", asset_id: "token-a", timestamp: "1767225900000", price: "0.53" }));
+  remove();
+  sockets[0]!.emit("message", JSON.stringify({ event_type: "last_trade_price", asset_id: "token-a", timestamp: "1767225900001", price: "0.54" }));
+
+  assert.deepEqual(receivedTypes, ["price"]);
+});
+
+test("MarketStreamService reconnects and re-subscribes desired assets", async () => {
+  const sockets: FakeWebSocket[] = [];
+  const webSocketFactory: WebSocketFactory = {
+    create(): WebSocketLike {
+      const socket = new FakeWebSocket();
+      sockets.push(socket);
+      setImmediate(() => {
+        socket.readyState = socket.OPEN;
+        socket.emit("open");
+      });
+      return socket;
+    }
+  };
+  const service = MarketStreamService.create({ webSocketFactory });
+
+  await service.connect();
+  service.subscribe({ assetIds: ["token-a"] });
+  const firstSocket = sockets[0]!;
+  firstSocket.close();
+  await new Promise<void>((resolve) => {
+    setTimeout(() => {
+      resolve();
+    }, 20);
+  });
+
+  assert.equal(sockets.length >= 2, true);
+  const hasSubscribePayload = sockets.slice(1).some((socket) => {
+    return socket.sentPayloads.some((payload) => payload.includes('"operation":"subscribe"') && payload.includes("token-a"));
+  });
+  assert.equal(hasSubscribePayload, true);
+
+  await service.disconnect();
+});
+
+test("MarketStreamService wraps websocket creation errors with typed connection error", async () => {
+  let sleepCalls = 0;
+  const clock: Clock = {
+    now() {
+      return Date.now();
+    },
+    async sleep() {
+      sleepCalls += 1;
+    }
+  };
+  const webSocketFactory: WebSocketFactory = {
+    create(): WebSocketLike {
+      throw new Error("socket down");
+    }
+  };
+  const service = MarketStreamService.create({ webSocketFactory, clock });
+
+  await assert.rejects(
+    async () => {
+      await service.connect({ reconnectDelayMs: 1 });
+    },
+    (error: unknown) => {
+      const matches = error instanceof MarketStreamConnectionError;
+      return matches;
+    }
+  );
+
+  assert.equal(sleepCalls, 0);
 });

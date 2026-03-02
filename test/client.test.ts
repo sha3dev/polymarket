@@ -34,3 +34,16 @@ test("PolymarketClient exposes feature services and delegates connect/disconnect
   assert.equal(disconnectCalls, 1);
   assert.equal(orderDisconnectCalls, 1);
 });
+
+test("PolymarketClient passes stream connect options", async () => {
+  let receivedDelay: number | null = null;
+  const stream = MarketStreamService.create();
+  stream.connect = async (options) => {
+    receivedDelay = options?.reconnectDelayMs ?? null;
+  };
+  const client = PolymarketClient.create({ stream, streamConnectOptions: { reconnectDelayMs: 321 } });
+
+  await client.connect();
+
+  assert.equal(receivedDelay, 321);
+});
