@@ -1,30 +1,10 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import type { Logger } from "../src/shared/contracts.ts";
 import { OrderConfirmationTracker } from "../src/orders/order-confirmation-tracker.ts";
 
-function createLogger(messages: string[]): Logger {
-  const logger: Logger = {
-    debug(message: string): void {
-      messages.push(`debug:${message}`);
-    },
-    info(): void {
-      // empty
-    },
-    warn(message: string): void {
-      messages.push(`warn:${message}`);
-    },
-    error(): void {
-      // empty
-    }
-  };
-  return logger;
-}
-
 test("OrderConfirmationTracker emits confirmed trade status for tracked taker order", () => {
-  const logs: string[] = [];
-  const tracker = OrderConfirmationTracker.create(createLogger(logs));
+  const tracker = OrderConfirmationTracker.create();
   tracker.markOrderInProcess("order-1");
 
   const received: Array<{ id: string; status: string }> = [];
@@ -37,8 +17,7 @@ test("OrderConfirmationTracker emits confirmed trade status for tracked taker or
 });
 
 test("OrderConfirmationTracker resolves tracked maker order id and ignores pending statuses", () => {
-  const logs: string[] = [];
-  const tracker = OrderConfirmationTracker.create(createLogger(logs));
+  const tracker = OrderConfirmationTracker.create();
   tracker.markOrderInProcess("maker-2");
 
   const received: Array<{ id: string; status: string }> = [];
@@ -55,8 +34,7 @@ test("OrderConfirmationTracker resolves tracked maker order id and ignores pendi
 });
 
 test("OrderConfirmationTracker emits cancelled status for order cancellation event", () => {
-  const logs: string[] = [];
-  const tracker = OrderConfirmationTracker.create(createLogger(logs));
+  const tracker = OrderConfirmationTracker.create();
 
   const received: Array<{ id: string; status: string }> = [];
   tracker.addOrderListener((message) => {
@@ -67,20 +45,18 @@ test("OrderConfirmationTracker emits cancelled status for order cancellation eve
   assert.deepEqual(received, [{ id: "order-cancelled", status: "cancelled" }]);
 });
 
-test("OrderConfirmationTracker logs and ignores non-json messages", () => {
-  const logs: string[] = [];
-  const tracker = OrderConfirmationTracker.create(createLogger(logs));
+test("OrderConfirmationTracker ignores non-json messages", () => {
+  const tracker = OrderConfirmationTracker.create();
+  const received: Array<{ id: string; status: string }> = [];
+  tracker.addOrderListener((message) => {
+    received.push(message);
+  });
   tracker.processUserStreamMessage("{bad-json");
-
-  assert.equal(
-    logs.some((item) => item.includes("Ignoring non-JSON user stream message")),
-    true
-  );
+  assert.deepEqual(received, []);
 });
 
 test("OrderConfirmationTracker catches reconnect listener errors and keeps processing", async () => {
-  const logs: string[] = [];
-  const tracker = OrderConfirmationTracker.create(createLogger(logs));
+  const tracker = OrderConfirmationTracker.create();
   let okListenerCalled = false;
 
   tracker.addReconnectListener(async () => {
@@ -93,8 +69,4 @@ test("OrderConfirmationTracker catches reconnect listener errors and keeps proce
   await tracker.emitReconnect();
 
   assert.equal(okListenerCalled, true);
-  assert.equal(
-    logs.some((item) => item.includes("Reconnect listener failed")),
-    true
-  );
 });

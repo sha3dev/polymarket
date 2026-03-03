@@ -1,6 +1,6 @@
 {
   "name": "@sha3/polymarket",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": false,
   "type": "module",
   "main": "dist/index.js",
@@ -42,12 +42,13 @@
     "template": "node-lib",
     "profilePath": null,
     "withAiAdapters": true,
-    "lastRefreshWith": "0.1.19"
+    "lastRefreshWith": "0.1.20"
   },
   "dependencies": {
     "@ethersproject/wallet": "^5.8.0",
     "@polymarket/clob-client": "^5.3.0",
     "@polymarket/order-utils": "^3.0.1",
+    "@sha3/logger": "^2.0.0",
     "ws": "^8.18.0"
   }
 }

@@ -1,6 +1,10 @@
 import WebSocket from "ws";
+import Sha3Logger from "@sha3/logger";
 
 import type { Clock, HttpClient, HttpResponse, Logger, WebSocketFactory, WebSocketLike } from "./contracts.ts";
+
+const DEFAULT_LOGGER_NAME = "polymarket";
+const DEFAULT_LOGGER = new Sha3Logger({ loggerName: DEFAULT_LOGGER_NAME });
 
 export function createDefaultHttpClient(): HttpClient {
   const client: HttpClient = {
@@ -14,20 +18,7 @@ export function createDefaultHttpClient(): HttpClient {
 }
 
 export function createDefaultLogger(): Logger {
-  const logger: Logger = {
-    debug(message: string): void {
-      console.debug(message);
-    },
-    info(message: string): void {
-      console.info(message);
-    },
-    warn(message: string): void {
-      console.warn(message);
-    },
-    error(message: string): void {
-      console.error(message);
-    }
-  };
+  const logger = DEFAULT_LOGGER;
   return logger;
 }
 

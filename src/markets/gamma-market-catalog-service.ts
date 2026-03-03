@@ -10,7 +10,7 @@
 
 import CONFIG from "../config.ts";
 import { createDefaultHttpClient, createDefaultLogger } from "../shared/defaults.ts";
-import type { HttpClient, Logger } from "../shared/contracts.ts";
+import type { HttpClient } from "../shared/contracts.ts";
 import { MarketLoadError } from "./market-load-error.ts";
 import { MarketNormalizer } from "./market-normalizer.ts";
 import type {
@@ -34,7 +34,6 @@ import { CryptoWindowSlugBuilder } from "./crypto-window-slug-builder.ts";
 
 type GammaMarketCatalogServiceOptions = {
   readonly httpClient?: HttpClient;
-  readonly logger?: Logger;
   readonly normalizer?: MarketNormalizer;
   readonly slugBuilder?: CryptoWindowSlugBuilder;
 };
@@ -57,7 +56,7 @@ export class GammaMarketCatalogService {
    */
 
   private readonly httpClient: HttpClient;
-  private readonly logger: Logger;
+  private readonly logger: ReturnType<typeof createDefaultLogger>;
   private readonly normalizer: MarketNormalizer;
   private readonly slugBuilder: CryptoWindowSlugBuilder;
 
@@ -73,7 +72,7 @@ export class GammaMarketCatalogService {
 
   public constructor(options?: GammaMarketCatalogServiceOptions) {
     this.httpClient = options?.httpClient ?? createDefaultHttpClient();
-    this.logger = options?.logger ?? createDefaultLogger();
+    this.logger = createDefaultLogger();
     this.normalizer = options?.normalizer ?? MarketNormalizer.create();
     this.slugBuilder = options?.slugBuilder ?? CryptoWindowSlugBuilder.create();
   }

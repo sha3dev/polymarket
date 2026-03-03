@@ -10,7 +10,7 @@
 
 import CONFIG from "../config.ts";
 import { createDefaultClock, createDefaultLogger, createDefaultWebSocketFactory } from "../shared/defaults.ts";
-import type { Clock, Logger, WebSocketFactory, WebSocketLike } from "../shared/contracts.ts";
+import type { Clock, WebSocketFactory, WebSocketLike } from "../shared/contracts.ts";
 import type {
   AddMarketListenerOptions,
   ConnectMarketStreamOptions,
@@ -34,12 +34,7 @@ import type { OrderBook } from "../markets/market-types.ts";
  * @section types
  */
 
-type MarketStreamServiceOptions = {
-  readonly logger?: Logger;
-  readonly clock?: Clock;
-  readonly webSocketFactory?: WebSocketFactory;
-  readonly parser?: MarketStreamParser;
-};
+type MarketStreamServiceOptions = { readonly clock?: Clock; readonly webSocketFactory?: WebSocketFactory; readonly parser?: MarketStreamParser };
 
 export class MarketStreamService {
   /**
@@ -59,7 +54,7 @@ export class MarketStreamService {
    * @section private:properties
    */
 
-  private readonly logger: Logger;
+  private readonly logger: ReturnType<typeof createDefaultLogger>;
   private readonly clock: Clock;
   private readonly webSocketFactory: WebSocketFactory;
   private readonly parser: MarketStreamParser;
@@ -81,7 +76,7 @@ export class MarketStreamService {
    */
 
   public constructor(options?: MarketStreamServiceOptions) {
-    this.logger = options?.logger ?? createDefaultLogger();
+    this.logger = createDefaultLogger();
     this.clock = options?.clock ?? createDefaultClock();
     this.webSocketFactory = options?.webSocketFactory ?? createDefaultWebSocketFactory();
     this.parser = options?.parser ?? MarketStreamParser.create();

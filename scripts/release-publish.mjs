@@ -95,6 +95,12 @@ async function main() {
     console.log(`Publishing new version ${packageJson.name}@${packageJson.version}.`);
   }
 
+  const build = await run("npm", ["run", "build"], projectRoot);
+
+  if (build.code !== 0) {
+    throw new Error("npm run build failed.");
+  }
+
   const publish = await run("npm", ["publish", "--access", "public", "--ignore-scripts"], projectRoot);
 
   if (publish.code !== 0) {

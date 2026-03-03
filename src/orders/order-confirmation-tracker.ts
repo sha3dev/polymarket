@@ -8,8 +8,8 @@
  * @section imports:internals
  */
 
+import { createDefaultLogger } from "../shared/defaults.ts";
 import { decodeWsMessage, isRecord } from "../shared/utils.ts";
-import type { Logger } from "../shared/contracts.ts";
 import type { OrderMessage, OrderServiceReconnectListener, OrderStatus, UserStreamMessage } from "./order-types.ts";
 
 /**
@@ -41,7 +41,7 @@ export class OrderConfirmationTracker {
    * @section private:properties
    */
 
-  private readonly logger: Logger;
+  private readonly logger: ReturnType<typeof createDefaultLogger>;
   private readonly listeners: Set<(message: OrderMessage) => void>;
   private readonly reconnectListeners: Set<OrderServiceReconnectListener>;
   private readonly orderIdsInProcess: Set<string>;
@@ -56,8 +56,8 @@ export class OrderConfirmationTracker {
    * @section constructor
    */
 
-  public constructor(logger: Logger) {
-    this.logger = logger;
+  public constructor() {
+    this.logger = createDefaultLogger();
     this.listeners = new Set<(message: OrderMessage) => void>();
     this.reconnectListeners = new Set<OrderServiceReconnectListener>();
     this.orderIdsInProcess = new Set<string>();
@@ -73,8 +73,8 @@ export class OrderConfirmationTracker {
    * @section factory
    */
 
-  public static create(logger: Logger): OrderConfirmationTracker {
-    const tracker = new OrderConfirmationTracker(logger);
+  public static create(): OrderConfirmationTracker {
+    const tracker = new OrderConfirmationTracker();
     return tracker;
   }
 

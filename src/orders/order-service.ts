@@ -11,7 +11,7 @@ import type { SignatureType } from "@polymarket/order-utils";
 
 import CONFIG from "../config.ts";
 import { createDefaultClock, createDefaultLogger, createDefaultWebSocketFactory } from "../shared/defaults.ts";
-import type { Clock, Logger, WebSocketFactory, WebSocketLike } from "../shared/contracts.ts";
+import type { Clock, WebSocketFactory, WebSocketLike } from "../shared/contracts.ts";
 import { clamp, round } from "../shared/utils.ts";
 import { OrderClientInitializationError } from "./order-client-initialization-error.ts";
 import { OrderConfirmationFailedError } from "./order-confirmation-failed-error.ts";
@@ -47,7 +47,6 @@ const DEFAULT_SIGNATURE_TYPE: SignatureType = 1;
 type OrderContext = { tokenId: string; tickSize: string; expiration: number };
 
 type OrderServiceOptions = {
-  readonly logger?: Logger;
   readonly clock?: Clock;
   readonly webSocketFactory?: WebSocketFactory;
   readonly clobClientFactory?: ClobClientFactory;
@@ -73,7 +72,7 @@ export class OrderService {
    * @section private:properties
    */
 
-  private readonly logger: Logger;
+  private readonly logger: ReturnType<typeof createDefaultLogger>;
   private readonly clock: Clock;
   private readonly webSocketFactory: WebSocketFactory;
   private readonly clobClientFactory: ClobClientFactory;
@@ -94,11 +93,11 @@ export class OrderService {
    */
 
   public constructor(options?: OrderServiceOptions) {
-    this.logger = options?.logger ?? createDefaultLogger();
+    this.logger = createDefaultLogger();
     this.clock = options?.clock ?? createDefaultClock();
     this.webSocketFactory = options?.webSocketFactory ?? createDefaultWebSocketFactory();
     this.clobClientFactory = options?.clobClientFactory ?? PolymarketClobClientFactory.create();
-    this.tracker = options?.tracker ?? OrderConfirmationTracker.create(this.logger);
+    this.tracker = options?.tracker ?? OrderConfirmationTracker.create();
     this.clobClient = null;
     this.apiKeyCreds = null;
     this.ws = null;
