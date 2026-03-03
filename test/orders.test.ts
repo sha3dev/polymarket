@@ -372,3 +372,45 @@ test("OrderService sends PING heartbeat frames on user websocket", async () => {
 
   await context.service.disconnect();
 });
+
+test("OrderService keeps user websocket connected for at least 5 minutes without reconnecting", async () => {
+  const sleepCalls: number[] = [];
+  const sleepResolvers: Array<() => void> = [];
+  const clock: Clock = {
+    now() {
+      return Date.now();
+    },
+    async sleep(milliseconds) {
+      sleepCalls.push(milliseconds);
+      await new Promise<void>((resolve) => {
+        sleepResolvers.push(resolve);
+      });
+    }
+  };
+  const context = createServiceContext({ clock });
+  const heartbeatCycles = Math.ceil((5 * 60 * 1000) / CONFIG.WS_HEARTBEAT_INTERVAL_MS);
+
+  await context.service.init({ privateKey: "0xabc" });
+  for (let cycleIndex = 0; cycleIndex < heartbeatCycles; cycleIndex += 1) {
+    while (sleepResolvers.length <= cycleIndex) {
+      await new Promise<void>((resolve) => {
+        setImmediate(() => {
+          resolve();
+        });
+      });
+    }
+    assert.equal(sleepCalls[cycleIndex], CONFIG.WS_HEARTBEAT_INTERVAL_MS);
+    sleepResolvers[cycleIndex]!();
+    await new Promise<void>((resolve) => {
+      setImmediate(() => {
+        resolve();
+      });
+    });
+  }
+
+  const pingCount = context.sockets[0]!.sentPayloads.filter((payload) => payload === "PING").length;
+  assert.equal(context.sockets.length, 1);
+  assert.equal(pingCount >= heartbeatCycles, true);
+
+  await context.service.disconnect();
+});

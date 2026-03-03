@@ -5,6 +5,7 @@ import CONFIG from "../src/config.ts";
 import type { Clock, WebSocketFactory, WebSocketLike } from "../src/shared/contracts.ts";
 import { MarketStreamConnectionError } from "../src/stream/market-stream-connection-error.ts";
 import { MarketStreamService } from "../src/stream/market-stream-service.ts";
+import type { MarketEvent } from "../src/stream/stream-types.ts";
 
 class FakeWebSocket implements WebSocketLike {
   public readonly OPEN = 1;
@@ -115,6 +116,46 @@ test("MarketStreamService forwards parsed events to listeners and remove handler
   await service.disconnect();
 });
 
+test("MarketStreamService writes received stream events to console during test run", async () => {
+  const sockets: FakeWebSocket[] = [];
+  const webSocketFactory: WebSocketFactory = {
+    create(): WebSocketLike {
+      const socket = new FakeWebSocket();
+      sockets.push(socket);
+      setImmediate(() => {
+        socket.readyState = socket.OPEN;
+        socket.emit("open");
+      });
+      return socket;
+    }
+  };
+  const service = MarketStreamService.create({ webSocketFactory });
+  const receivedEvents: MarketEvent[] = [];
+
+  service.addListener({
+    listener(event) {
+      receivedEvents.push(event);
+      console.log(`[TEST STREAM EVENT] ${JSON.stringify(event)}`);
+    }
+  });
+
+  await service.connect();
+  sockets[0]!.emit("message", JSON.stringify({ event_type: "last_trade_price", asset_id: "token-a", timestamp: "1767225900000", price: "0.53" }));
+  sockets[0]!.emit(
+    "message",
+    JSON.stringify({
+      event_type: "book",
+      asset_id: "token-a",
+      timestamp: "1767225900001",
+      bids: [{ price: "0.49", size: "15" }],
+      asks: [{ price: "0.55", size: "12" }]
+    })
+  );
+
+  assert.equal(receivedEvents.length, 2);
+  await service.disconnect();
+});
+
 test("MarketStreamService reconnects and re-subscribes desired assets", async () => {
   const sockets: FakeWebSocket[] = [];
   const webSocketFactory: WebSocketFactory = {
@@ -190,6 +231,63 @@ test("MarketStreamService sends PING heartbeat frames on open socket", async () 
   await service.disconnect();
 });
 
+test("MarketStreamService stays connected for at least 5 minutes without reconnecting", async () => {
+  const sockets: FakeWebSocket[] = [];
+  const sleepCalls: number[] = [];
+  const sleepResolvers: Array<() => void> = [];
+  let createCalls = 0;
+  const clock: Clock = {
+    now() {
+      return Date.now();
+    },
+    async sleep(milliseconds) {
+      sleepCalls.push(milliseconds);
+      await new Promise<void>((resolve) => {
+        sleepResolvers.push(resolve);
+      });
+    }
+  };
+  const webSocketFactory: WebSocketFactory = {
+    create(): WebSocketLike {
+      createCalls += 1;
+      const socket = new FakeWebSocket();
+      sockets.push(socket);
+      setImmediate(() => {
+        socket.readyState = socket.OPEN;
+        socket.emit("open");
+      });
+      return socket;
+    }
+  };
+  const service = MarketStreamService.create({ webSocketFactory, clock });
+  const heartbeatCycles = Math.ceil((5 * 60 * 1000) / CONFIG.WS_HEARTBEAT_INTERVAL_MS);
+
+  await service.connect();
+  for (let cycleIndex = 0; cycleIndex < heartbeatCycles; cycleIndex += 1) {
+    while (sleepResolvers.length <= cycleIndex) {
+      await new Promise<void>((resolve) => {
+        setImmediate(() => {
+          resolve();
+        });
+      });
+    }
+    assert.equal(sleepCalls[cycleIndex], CONFIG.WS_HEARTBEAT_INTERVAL_MS);
+    sleepResolvers[cycleIndex]!();
+    await new Promise<void>((resolve) => {
+      setImmediate(() => {
+        resolve();
+      });
+    });
+  }
+
+  const pingCount = sockets[0]!.sentPayloads.filter((payload) => payload === "PING").length;
+  assert.equal(createCalls, 1);
+  assert.equal(sockets.length, 1);
+  assert.equal(pingCount >= heartbeatCycles, true);
+
+  await service.disconnect();
+});
+
 test("MarketStreamService uses immediate first reconnect and jittered delays after failed retries", async () => {
   const sockets: FakeWebSocket[] = [];
   const reconnectPhases: string[] = [];
@@ -200,8 +298,15 @@ test("MarketStreamService uses immediate first reconnect and jittered delays aft
       return Date.now();
     },
     async sleep(milliseconds) {
-      reconnectPhases.push(`sleep:${milliseconds}`);
-      sleepDurations.push(milliseconds);
+      if (milliseconds === CONFIG.WS_HEARTBEAT_INTERVAL_MS) {
+        await new Promise<void>(() => {
+          // Keep heartbeat loop parked in this test.
+        });
+      }
+      if (milliseconds !== CONFIG.WS_HEARTBEAT_INTERVAL_MS) {
+        reconnectPhases.push(`sleep:${milliseconds}`);
+        sleepDurations.push(milliseconds);
+      }
     }
   };
   const webSocketFactory: WebSocketFactory = {

@@ -18,6 +18,7 @@
     "format:write": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-tests.mjs",
+    "test:stream:realtime": "tsx test/stream-realtime-check.ts",
     "publish": "node scripts/release-publish.mjs"
   },
   "devDependencies": {

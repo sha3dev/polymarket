@@ -119,61 +119,74 @@ export class MarketStreamService {
 
   private bindSocket(socket: WebSocketLike): void {
     socket.on("open", () => {
-      this.onOpen();
+      this.onOpen(socket);
     });
     socket.on("close", () => {
-      void this.onClose();
+      void this.onClose(socket);
     });
     socket.on("error", (error) => {
       const normalizedError = error instanceof Error ? error : new Error(String(error));
-      this.onError(normalizedError);
+      this.onError(socket, normalizedError);
     });
     socket.on("message", (data) => {
-      this.onMessage(data);
+      this.onMessage(socket, data);
     });
   }
 
-  private onOpen(): void {
-    this.logger.debug("[STREAM] Market WS opened");
-    this.subscribedAssetIds.clear();
-    this.startHeartbeatLoop();
-    this.flushSubscriptions();
-  }
-
-  private async onClose(): Promise<void> {
-    this.logger.warn("[STREAM] Market WS closed");
-    this.stopHeartbeatLoop();
-    let isFirstReconnectAttempt = true;
-    while (!this.isDisconnectRequested) {
-      if (!isFirstReconnectAttempt) {
-        const reconnectDelayMs = this.getJitteredReconnectDelayMs();
-        await this.clock.sleep(reconnectDelayMs);
-      }
-      try {
-        await this.openSocket();
-        break;
-      } catch {
-        // Retry until the service is explicitly disconnected.
-      }
-      isFirstReconnectAttempt = false;
+  private onOpen(socket: WebSocketLike): void {
+    const isCurrentSocket = this.ws === socket;
+    if (isCurrentSocket) {
+      this.logger.debug("[STREAM] Market WS opened");
+      this.subscribedAssetIds.clear();
+      this.startHeartbeatLoop();
+      this.flushSubscriptions();
     }
   }
 
-  private onError(error: Error): void {
-    this.logger.error(`[STREAM] Market WS error: ${error.message}`);
+  private async onClose(socket: WebSocketLike): Promise<void> {
+    const isCurrentSocket = this.ws === socket;
+    if (isCurrentSocket) {
+      this.logger.warn("[STREAM] Market WS closed");
+      this.ws = null;
+      this.stopHeartbeatLoop();
+      let isFirstReconnectAttempt = true;
+      while (!this.isDisconnectRequested) {
+        if (!isFirstReconnectAttempt) {
+          const reconnectDelayMs = this.getJitteredReconnectDelayMs();
+          await this.clock.sleep(reconnectDelayMs);
+        }
+        try {
+          await this.openSocket();
+          break;
+        } catch {
+          // Retry until the service is explicitly disconnected.
+        }
+        isFirstReconnectAttempt = false;
+      }
+    }
   }
 
-  private onMessage(data: unknown): void {
-    const events = this.parser.parse(data);
-    for (const event of events) {
-      if (event.type === "price") {
-        this.lastPriceByAssetId.set(event.assetId, event.price);
-      }
-      if (event.type === "book") {
-        this.lastOrderBookByAssetId.set(event.assetId, { bids: event.bids, asks: event.asks });
-      }
-      for (const listener of this.listeners) {
-        listener(event);
+  private onError(socket: WebSocketLike, error: Error): void {
+    const isCurrentSocket = this.ws === socket;
+    if (isCurrentSocket) {
+      this.logger.error(`[STREAM] Market WS error: ${error.message}`);
+    }
+  }
+
+  private onMessage(socket: WebSocketLike, data: unknown): void {
+    const isCurrentSocket = this.ws === socket;
+    if (isCurrentSocket) {
+      const events = this.parser.parse(data);
+      for (const event of events) {
+        if (event.type === "price") {
+          this.lastPriceByAssetId.set(event.assetId, event.price);
+        }
+        if (event.type === "book") {
+          this.lastOrderBookByAssetId.set(event.assetId, { bids: event.bids, asks: event.asks });
+        }
+        for (const listener of this.listeners) {
+          listener(event);
+        }
       }
     }
   }
@@ -210,17 +223,20 @@ export class MarketStreamService {
   private async openSocket(): Promise<void> {
     const endpoint = this.getEndpointUrl();
     try {
-      if (this.ws) {
-        this.ws.close();
+      const hasOpenSocket = this.ws !== null && this.ws.readyState === this.ws.OPEN;
+      if (hasOpenSocket) {
+        this.logger.debug("[STREAM] Market WS already open, skipping duplicate connect");
       }
-      const socket = this.webSocketFactory.create(endpoint);
-      this.ws = socket;
-      this.bindSocket(socket);
-      await new Promise<void>((resolve) => {
-        socket.on("open", () => {
-          resolve();
+      if (!hasOpenSocket) {
+        const socket = this.webSocketFactory.create(endpoint);
+        this.ws = socket;
+        this.bindSocket(socket);
+        await new Promise<void>((resolve) => {
+          socket.on("open", () => {
+            resolve();
+          });
         });
-      });
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       throw MarketStreamConnectionError.forEndpoint(endpoint, reason);

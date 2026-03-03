@@ -141,64 +141,80 @@ export class OrderService {
 
   private bindSocket(socket: WebSocketLike): void {
     socket.on("open", () => {
-      void this.onOpen();
+      void this.onOpen(socket);
     });
     socket.on("close", () => {
-      void this.onClose();
+      void this.onClose(socket);
     });
     socket.on("error", (error) => {
       const normalizedError = error instanceof Error ? error : new Error(String(error));
-      this.onError(normalizedError);
+      this.onError(socket, normalizedError);
     });
     socket.on("message", (data) => {
-      this.onMessage(data);
+      this.onMessage(socket, data);
     });
   }
 
-  private async onOpen(): Promise<void> {
-    this.ensureInitialized();
-    const payload = { type: "user", auth: { apiKey: this.apiKeyCreds!.key, secret: this.apiKeyCreds!.secret, passphrase: this.apiKeyCreds!.passphrase } };
-    if (this.ws && this.ws.readyState === this.ws.OPEN) {
-      this.ws.send(JSON.stringify(payload));
+  private async onOpen(socket: WebSocketLike): Promise<void> {
+    const isCurrentSocket = this.ws === socket;
+    if (isCurrentSocket) {
+      this.ensureInitialized();
+      const payload = { type: "user", auth: { apiKey: this.apiKeyCreds!.key, secret: this.apiKeyCreds!.secret, passphrase: this.apiKeyCreds!.passphrase } };
+      if (this.ws && this.ws.readyState === this.ws.OPEN) {
+        this.ws.send(JSON.stringify(payload));
+      }
+      this.startHeartbeatLoop();
+      await this.tracker.emitReconnect();
     }
-    this.startHeartbeatLoop();
-    await this.tracker.emitReconnect();
   }
 
-  private async onClose(): Promise<void> {
-    this.logger.warn("[ORDERS] User websocket closed");
-    this.stopHeartbeatLoop();
-    while (!this.isDisconnectRequested) {
-      try {
-        await this.connectUserStream();
-        break;
-      } catch {
-        await this.clock.sleep(this.reconnectDelayMs);
+  private async onClose(socket: WebSocketLike): Promise<void> {
+    const isCurrentSocket = this.ws === socket;
+    if (isCurrentSocket) {
+      this.logger.warn("[ORDERS] User websocket closed");
+      this.ws = null;
+      this.stopHeartbeatLoop();
+      while (!this.isDisconnectRequested) {
+        try {
+          await this.connectUserStream();
+          break;
+        } catch {
+          await this.clock.sleep(this.reconnectDelayMs);
+        }
       }
     }
   }
 
-  private onError(error: Error): void {
-    this.logger.error(`[ORDERS] User websocket error: ${error.message}`);
+  private onError(socket: WebSocketLike, error: Error): void {
+    const isCurrentSocket = this.ws === socket;
+    if (isCurrentSocket) {
+      this.logger.error(`[ORDERS] User websocket error: ${error.message}`);
+    }
   }
 
-  private onMessage(data: unknown): void {
-    this.tracker.processUserStreamMessage(data);
+  private onMessage(socket: WebSocketLike, data: unknown): void {
+    const isCurrentSocket = this.ws === socket;
+    if (isCurrentSocket) {
+      this.tracker.processUserStreamMessage(data);
+    }
   }
 
   private async connectUserStream(): Promise<void> {
     const endpoint = this.getUserStreamEndpoint();
-    if (this.ws) {
-      this.ws.close();
+    const hasOpenSocket = this.ws !== null && this.ws.readyState === this.ws.OPEN;
+    if (hasOpenSocket) {
+      this.logger.debug("[ORDERS] User websocket already open, skipping duplicate connect");
     }
-    const socket = this.webSocketFactory.create(endpoint);
-    this.ws = socket;
-    this.bindSocket(socket);
-    await new Promise<void>((resolve) => {
-      socket.on("open", () => {
-        resolve();
+    if (!hasOpenSocket) {
+      const socket = this.webSocketFactory.create(endpoint);
+      this.ws = socket;
+      this.bindSocket(socket);
+      await new Promise<void>((resolve) => {
+        socket.on("open", () => {
+          resolve();
+        });
       });
-    });
+    }
   }
 
   private startHeartbeatLoop(): void {
