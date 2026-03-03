@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
+import CONFIG from "../src/config.ts";
 import type { Clock, WebSocketFactory, WebSocketLike } from "../src/shared/contracts.ts";
 import { MarketStreamConnectionError } from "../src/stream/market-stream-connection-error.ts";
 import { MarketStreamService } from "../src/stream/market-stream-service.ts";
@@ -111,6 +112,7 @@ test("MarketStreamService forwards parsed events to listeners and remove handler
   sockets[0]!.emit("message", JSON.stringify({ event_type: "last_trade_price", asset_id: "token-a", timestamp: "1767225900001", price: "0.54" }));
 
   assert.deepEqual(receivedTypes, ["price"]);
+  await service.disconnect();
 });
 
 test("MarketStreamService reconnects and re-subscribes desired assets", async () => {
@@ -143,6 +145,101 @@ test("MarketStreamService reconnects and re-subscribes desired assets", async ()
     return socket.sentPayloads.some((payload) => payload.includes('"operation":"subscribe"') && payload.includes("token-a"));
   });
   assert.equal(hasSubscribePayload, true);
+
+  await service.disconnect();
+});
+
+test("MarketStreamService sends PING heartbeat frames on open socket", async () => {
+  const sockets: FakeWebSocket[] = [];
+  const sleepCalls: number[] = [];
+  const sleepResolvers: Array<() => void> = [];
+  const clock: Clock = {
+    now() {
+      return Date.now();
+    },
+    async sleep(milliseconds) {
+      sleepCalls.push(milliseconds);
+      await new Promise<void>((resolve) => {
+        sleepResolvers.push(resolve);
+      });
+    }
+  };
+  const webSocketFactory: WebSocketFactory = {
+    create(): WebSocketLike {
+      const socket = new FakeWebSocket();
+      sockets.push(socket);
+      setImmediate(() => {
+        socket.readyState = socket.OPEN;
+        socket.emit("open");
+      });
+      return socket;
+    }
+  };
+  const service = MarketStreamService.create({ webSocketFactory, clock });
+
+  await service.connect();
+  assert.equal(sleepCalls[0], CONFIG.WS_HEARTBEAT_INTERVAL_MS);
+  sleepResolvers[0]!();
+  await new Promise<void>((resolve) => {
+    setImmediate(() => {
+      resolve();
+    });
+  });
+  assert.equal(sockets[0]!.sentPayloads.includes("PING"), true);
+
+  await service.disconnect();
+});
+
+test("MarketStreamService uses immediate first reconnect and jittered delays after failed retries", async () => {
+  const sockets: FakeWebSocket[] = [];
+  const reconnectPhases: string[] = [];
+  const sleepDurations: number[] = [];
+  let createCount = 0;
+  const clock: Clock = {
+    now() {
+      return Date.now();
+    },
+    async sleep(milliseconds) {
+      reconnectPhases.push(`sleep:${milliseconds}`);
+      sleepDurations.push(milliseconds);
+    }
+  };
+  const webSocketFactory: WebSocketFactory = {
+    create(): WebSocketLike {
+      const callIndex = createCount;
+      createCount += 1;
+      reconnectPhases.push(`create:${callIndex}`);
+      if (callIndex === 1 || callIndex === 2) {
+        throw new Error("temporary reconnect error");
+      }
+      const socket = new FakeWebSocket();
+      sockets.push(socket);
+      setImmediate(() => {
+        socket.readyState = socket.OPEN;
+        socket.emit("open");
+      });
+      return socket;
+    }
+  };
+  const service = MarketStreamService.create({ webSocketFactory, clock });
+
+  await service.connect({ reconnectDelayMs: 40 });
+  sockets[0]!.close();
+  await new Promise<void>((resolve) => {
+    setTimeout(() => {
+      resolve();
+    }, 30);
+  });
+
+  assert.deepEqual(reconnectPhases.slice(0, 2), ["create:0", "create:1"]);
+  assert.equal(reconnectPhases[2]!.startsWith("sleep:"), true);
+  assert.equal(reconnectPhases[3], "create:2");
+  assert.equal(reconnectPhases[4]!.startsWith("sleep:"), true);
+  assert.equal(reconnectPhases[5], "create:3");
+  assert.equal(sleepDurations.length, 2);
+  for (const delay of sleepDurations) {
+    assert.equal(delay >= 20 && delay <= 60, true);
+  }
 
   await service.disconnect();
 });

@@ -61,6 +61,7 @@ export class OrderService {
   private reconnectDelayMs: number;
   private maxAllowedSlippage: number;
   private isDisconnectRequested: boolean;
+  private isHeartbeatActive: boolean;
 
   /**
    * @section protected:attributes
@@ -104,6 +105,7 @@ export class OrderService {
     this.reconnectDelayMs = CONFIG.DEFAULT_RECONNECT_DELAY_MS;
     this.maxAllowedSlippage = CONFIG.DEFAULT_MAX_ALLOWED_SLIPPAGE;
     this.isDisconnectRequested = false;
+    this.isHeartbeatActive = false;
     this.initOptions = null;
   }
 
@@ -159,11 +161,13 @@ export class OrderService {
     if (this.ws && this.ws.readyState === this.ws.OPEN) {
       this.ws.send(JSON.stringify(payload));
     }
+    this.startHeartbeatLoop();
     await this.tracker.emitReconnect();
   }
 
   private async onClose(): Promise<void> {
     this.logger.warn("[ORDERS] User websocket closed");
+    this.stopHeartbeatLoop();
     while (!this.isDisconnectRequested) {
       try {
         await this.connectUserStream();
@@ -195,6 +199,37 @@ export class OrderService {
         resolve();
       });
     });
+  }
+
+  private startHeartbeatLoop(): void {
+    if (!this.isHeartbeatActive) {
+      this.isHeartbeatActive = true;
+      void this.runHeartbeatLoop();
+    }
+  }
+
+  private stopHeartbeatLoop(): void {
+    this.isHeartbeatActive = false;
+  }
+
+  private async runHeartbeatLoop(): Promise<void> {
+    while (this.isHeartbeatActive && !this.isDisconnectRequested) {
+      await this.clock.sleep(CONFIG.WS_HEARTBEAT_INTERVAL_MS);
+      if (this.isHeartbeatActive && !this.isDisconnectRequested) {
+        this.sendHeartbeatPing();
+      }
+    }
+  }
+
+  private sendHeartbeatPing(): boolean {
+    const currentSocket = this.ws;
+    const canSend = currentSocket !== null && currentSocket.readyState === currentSocket.OPEN;
+    if (canSend) {
+      currentSocket.send("PING");
+    } else {
+      this.logger.warn("[ORDERS] Cannot send PING because websocket is not open");
+    }
+    return canSend;
   }
 
   private getOrderContext(options: PostOrderOptions): OrderContext {
@@ -404,6 +439,7 @@ export class OrderService {
 
   public async disconnect(): Promise<void> {
     this.isDisconnectRequested = true;
+    this.stopHeartbeatLoop();
     if (this.ws) {
       this.ws.close();
       this.ws = null;

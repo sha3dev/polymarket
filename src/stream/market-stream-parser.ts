@@ -16,7 +16,7 @@ import { MarketStreamProtocolError } from "./market-stream-protocol-error.ts";
  * @section consts
  */
 
-// empty
+const HEARTBEAT_PONG_MESSAGE = "PONG";
 
 /**
  * @section types
@@ -150,20 +150,23 @@ export class MarketStreamParser {
 
   public parse(rawMessage: unknown): MarketEvent[] {
     const text = decodeWsMessage(rawMessage);
-    let parsed: unknown = null;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw MarketStreamProtocolError.forMessage("payload is not valid JSON", text);
-    }
-    const payloads = this.asPayloads(parsed);
+    const isHeartbeatPong = text.trim() === HEARTBEAT_PONG_MESSAGE;
     const events: MarketEvent[] = [];
-    for (const payload of payloads) {
-      if (payload.event_type === "book") {
-        events.push(this.toBookEvent(payload));
+    if (!isHeartbeatPong) {
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw MarketStreamProtocolError.forMessage("payload is not valid JSON", text);
       }
-      if (payload.event_type === "last_trade_price") {
-        events.push(this.toPriceEvent(payload));
+      const payloads = this.asPayloads(parsed);
+      for (const payload of payloads) {
+        if (payload.event_type === "book") {
+          events.push(this.toBookEvent(payload));
+        }
+        if (payload.event_type === "last_trade_price") {
+          events.push(this.toPriceEvent(payload));
+        }
       }
     }
     return events;

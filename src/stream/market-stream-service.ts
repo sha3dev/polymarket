@@ -28,7 +28,8 @@ import type { OrderBook } from "../markets/market-types.ts";
  * @section consts
  */
 
-// empty
+const RECONNECT_JITTER_MIN_FACTOR = CONFIG.DEFAULT_RECONNECT_JITTER_MIN_FACTOR;
+const RECONNECT_JITTER_MAX_FACTOR = CONFIG.DEFAULT_RECONNECT_JITTER_MAX_FACTOR;
 
 /**
  * @section types
@@ -43,6 +44,7 @@ export class MarketStreamService {
 
   private reconnectDelayMs: number;
   private isDisconnectRequested: boolean;
+  private isHeartbeatActive: boolean;
 
   /**
    * @section protected:attributes
@@ -88,6 +90,7 @@ export class MarketStreamService {
     this.ws = null;
     this.reconnectDelayMs = CONFIG.DEFAULT_RECONNECT_DELAY_MS;
     this.isDisconnectRequested = false;
+    this.isHeartbeatActive = false;
   }
 
   /**
@@ -133,18 +136,26 @@ export class MarketStreamService {
   private onOpen(): void {
     this.logger.debug("[STREAM] Market WS opened");
     this.subscribedAssetIds.clear();
+    this.startHeartbeatLoop();
     this.flushSubscriptions();
   }
 
   private async onClose(): Promise<void> {
     this.logger.warn("[STREAM] Market WS closed");
+    this.stopHeartbeatLoop();
+    let isFirstReconnectAttempt = true;
     while (!this.isDisconnectRequested) {
+      if (!isFirstReconnectAttempt) {
+        const reconnectDelayMs = this.getJitteredReconnectDelayMs();
+        await this.clock.sleep(reconnectDelayMs);
+      }
       try {
         await this.openSocket();
         break;
       } catch {
-        await this.clock.sleep(this.reconnectDelayMs);
+        // Retry until the service is explicitly disconnected.
       }
+      isFirstReconnectAttempt = false;
     }
   }
 
@@ -216,6 +227,44 @@ export class MarketStreamService {
     }
   }
 
+  private startHeartbeatLoop(): void {
+    if (!this.isHeartbeatActive) {
+      this.isHeartbeatActive = true;
+      void this.runHeartbeatLoop();
+    }
+  }
+
+  private stopHeartbeatLoop(): void {
+    this.isHeartbeatActive = false;
+  }
+
+  private async runHeartbeatLoop(): Promise<void> {
+    while (this.isHeartbeatActive && !this.isDisconnectRequested) {
+      await this.clock.sleep(CONFIG.WS_HEARTBEAT_INTERVAL_MS);
+      if (this.isHeartbeatActive && !this.isDisconnectRequested) {
+        this.sendHeartbeatPing();
+      }
+    }
+  }
+
+  private sendHeartbeatPing(): boolean {
+    const currentSocket = this.ws;
+    const canSend = currentSocket !== null && currentSocket.readyState === currentSocket.OPEN;
+    if (canSend) {
+      currentSocket.send("PING");
+    } else {
+      this.logger.warn("[STREAM] Cannot send PING because websocket is not open");
+    }
+    return canSend;
+  }
+
+  private getJitteredReconnectDelayMs(): number {
+    const jitterRange = RECONNECT_JITTER_MAX_FACTOR - RECONNECT_JITTER_MIN_FACTOR;
+    const randomFactor = RECONNECT_JITTER_MIN_FACTOR + Math.random() * jitterRange;
+    const delayMs = Math.max(0, Math.round(this.reconnectDelayMs * randomFactor));
+    return delayMs;
+  }
+
   /**
    * @section protected:methods
    */
@@ -234,6 +283,7 @@ export class MarketStreamService {
 
   public async disconnect(): Promise<void> {
     this.isDisconnectRequested = true;
+    this.stopHeartbeatLoop();
     if (this.ws) {
       this.ws.close();
       this.ws = null;

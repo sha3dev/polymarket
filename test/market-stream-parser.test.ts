@@ -61,3 +61,11 @@ test("MarketStreamParser ignores unsupported event payloads", () => {
 
   assert.deepEqual(events, []);
 });
+
+test("MarketStreamParser ignores plain-text PONG heartbeat frames", () => {
+  const parser = MarketStreamParser.create();
+
+  const events = parser.parse("PONG");
+
+  assert.deepEqual(events, []);
+});
