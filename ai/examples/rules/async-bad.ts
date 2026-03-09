@@ -1,22 +1,4 @@
 /**
- * @section imports:externals
- */
-
-// empty
-
-/**
- * @section imports:internals
- */
-
-// empty
-
-/**
- * @section consts
- */
-
-// empty
-
-/**
  * @section types
  */
 
@@ -28,29 +10,11 @@ type InvoiceWriter = { persist(invoices: Invoice[]): Promise<SyncResult> };
 
 export class InvoiceSyncService {
   /**
-   * @section private:attributes
-   */
-
-  // empty
-
-  /**
-   * @section protected:attributes
-   */
-
-  // empty
-
-  /**
    * @section private:properties
    */
 
   private readonly source: InvoiceSource;
   private readonly writer: InvoiceWriter;
-
-  /**
-   * @section public:properties
-   */
-
-  // empty
 
   /**
    * @section constructor
@@ -62,12 +26,6 @@ export class InvoiceSyncService {
   }
 
   /**
-   * @section static:properties
-   */
-
-  // empty
-
-  /**
    * @section factory
    */
 
@@ -75,18 +33,6 @@ export class InvoiceSyncService {
     const service = new InvoiceSyncService(source, writer);
     return service;
   }
-
-  /**
-   * @section private:methods
-   */
-
-  // empty
-
-  /**
-   * @section protected:methods
-   */
-
-  // empty
 
   /**
    * @section public:methods

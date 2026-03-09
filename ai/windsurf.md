@@ -1,8 +1,7 @@
 # Windsurf Adapter
 
-- Treat `AGENTS.md` as a mandatory contract.
-- If repository code conflicts with `AGENTS.md`, `AGENTS.md` and `@sha3/code-standards` conventions MUST win.
-- Never modify `@sha3/code-standards` managed files (`AGENTS.md`, `ai/*`, `ai/examples/*`, tooling configs) unless user explicitly requests it.
-- Follow class-first and feature-folder conventions.
-- Avoid early returns; keep a single return per function.
-- Execute local deterministic checks with `npm run check`.
+- Treat `AGENTS.md` and `ai/contract.json` as the mandatory local contract.
+- Managed files remain read-only unless the user explicitly requests a standards update.
+- Rewrite `README.md` as real package documentation and document public exports and public methods after implementation.
+- Prefer deterministic fixes that satisfy `npm run check` over ad hoc style guesses.
+- Resolve all failing checks before finalizing.

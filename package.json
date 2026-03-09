@@ -1,6 +1,6 @@
 {
   "name": "@sha3/polymarket",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "private": false,
   "type": "module",
   "main": "dist/index.js",
@@ -10,26 +10,28 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test",
+    "check": "npm run standards:check && npm run lint && npm run format:check && npm run typecheck && npm run test",
     "fix": "npm run lint:fix && npm run format:write",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format:check": "prettier --check .",
-    "format:write": "prettier --write .",
+    "lint": "biome check .",
+    "lint:fix": "biome check . --write",
+    "format:check": "biome format .",
+    "format:write": "biome format . --write",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-tests.mjs",
     "test:stream:realtime": "tsx test/stream-realtime-check.ts",
-    "publish": "node scripts/release-publish.mjs"
+    "publish": "node scripts/release-publish.mjs",
+    "standards:check": "code-standards verify"
   },
   "devDependencies": {
-    "@sha3/code-standards": "^0.1.0",
-    "@types/node": "^22.13.10",
+    "@sha3/code-standards": "^0.29.0",
+    "@types/node": "^25.4.0",
     "@types/ws": "^8.18.1",
-    "eslint": "^9.20.1",
-    "prettier": "^3.5.3",
-    "tsx": "^4.19.3",
-    "typescript": "^5.8.2",
-    "typescript-eslint": "^8.56.1"
+    "eslint": "^10.0.3",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.0",
+    "@biomejs/biome": "^2.4.6"
   },
   "repository": {
     "type": "git",
@@ -43,13 +45,14 @@
     "template": "node-lib",
     "profilePath": null,
     "withAiAdapters": true,
-    "lastRefreshWith": "0.1.20"
+    "lastRefactorWith": "0.29.0",
+    "contractVersion": "v1"
   },
   "dependencies": {
     "@ethersproject/wallet": "^5.8.0",
-    "@polymarket/clob-client": "^5.3.0",
+    "@polymarket/clob-client": "^5.8.0",
     "@polymarket/order-utils": "^3.0.1",
     "@sha3/logger": "^2.0.0",
-    "ws": "^8.18.0"
+    "ws": "^8.19.0"
   }
 }

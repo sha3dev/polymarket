@@ -1,20 +1,8 @@
 /**
- * @section imports:externals
- */
-
-// empty
-
-/**
- * @section imports:internals
- */
-
-// empty
-
-/**
  * @section consts
  */
 
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+const millisecondsPerDay = 24 * 60 * 60 * 1000;
 
 /**
  * @section types
@@ -24,42 +12,6 @@ type Invoice = { issuedAt: Date };
 type EscalationDecision = "manual-review" | "no-escalation";
 
 export class InvoiceEscalationPolicy {
-  /**
-   * @section private:attributes
-   */
-
-  // empty
-
-  /**
-   * @section protected:attributes
-   */
-
-  // empty
-
-  /**
-   * @section private:properties
-   */
-
-  // empty
-
-  /**
-   * @section public:properties
-   */
-
-  // empty
-
-  /**
-   * @section constructor
-   */
-
-  // empty
-
-  /**
-   * @section static:properties
-   */
-
-  // empty
-
   /**
    * @section factory
    */
@@ -75,15 +27,9 @@ export class InvoiceEscalationPolicy {
 
   private daysBetween(from: Date, to: Date): number {
     const diffInMilliseconds = to.getTime() - from.getTime();
-    const dayCount = Math.floor(diffInMilliseconds / MILLISECONDS_PER_DAY);
+    const dayCount = Math.floor(diffInMilliseconds / millisecondsPerDay);
     return dayCount;
   }
-
-  /**
-   * @section protected:methods
-   */
-
-  // empty
 
   /**
    * @section public:methods

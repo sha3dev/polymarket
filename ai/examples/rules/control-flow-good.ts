@@ -1,22 +1,4 @@
 /**
- * @section imports:externals
- */
-
-// empty
-
-/**
- * @section imports:internals
- */
-
-// empty
-
-/**
- * @section consts
- */
-
-// empty
-
-/**
  * @section types
  */
 
@@ -24,28 +6,10 @@ type FeatureFlagMap = Record<string, boolean>;
 
 export class FeatureGate {
   /**
-   * @section private:attributes
-   */
-
-  // empty
-
-  /**
-   * @section protected:attributes
-   */
-
-  // empty
-
-  /**
    * @section private:properties
    */
 
   private readonly flags: FeatureFlagMap;
-
-  /**
-   * @section public:properties
-   */
-
-  // empty
 
   /**
    * @section constructor
@@ -56,12 +20,6 @@ export class FeatureGate {
   }
 
   /**
-   * @section static:properties
-   */
-
-  // empty
-
-  /**
    * @section factory
    */
 
@@ -69,18 +27,6 @@ export class FeatureGate {
     const gate = new FeatureGate(flags);
     return gate;
   }
-
-  /**
-   * @section private:methods
-   */
-
-  // empty
-
-  /**
-   * @section protected:methods
-   */
-
-  // empty
 
   /**
    * @section public:methods

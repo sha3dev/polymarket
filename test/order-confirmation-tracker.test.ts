@@ -1,14 +1,14 @@
-import { strict as assert } from "node:assert";
+import * as assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { OrderConfirmationTracker } from "../src/orders/order-confirmation-tracker.ts";
+import { OrderConfirmationTrackerService } from "../src/order/order-confirmation-tracker.service.ts";
 
-test("OrderConfirmationTracker emits confirmed trade status for tracked taker order", () => {
-  const tracker = OrderConfirmationTracker.create();
+test("OrderConfirmationTrackerService emits confirmed trade status for tracked taker order", () => {
+  const tracker = OrderConfirmationTrackerService.create();
   tracker.markOrderInProcess("order-1");
 
   const received: Array<{ id: string; status: string }> = [];
-  tracker.addOrderListener((message) => {
+  tracker.addOrderListener((message): void => {
     received.push(message);
   });
   tracker.processUserStreamMessage(JSON.stringify({ event_type: "trade", status: "CONFIRMED", taker_order_id: "order-1", maker_orders: [] }));
@@ -16,28 +16,26 @@ test("OrderConfirmationTracker emits confirmed trade status for tracked taker or
   assert.deepEqual(received, [{ id: "order-1", status: "confirmed" }]);
 });
 
-test("OrderConfirmationTracker resolves tracked maker order id and ignores pending statuses", () => {
-  const tracker = OrderConfirmationTracker.create();
+test("OrderConfirmationTrackerService resolves tracked maker order id and ignores pending statuses", () => {
+  const tracker = OrderConfirmationTrackerService.create();
   tracker.markOrderInProcess("maker-2");
 
   const received: Array<{ id: string; status: string }> = [];
-  tracker.addOrderListener((message) => {
+  tracker.addOrderListener((message): void => {
     received.push(message);
   });
 
-  tracker.processUserStreamMessage(
-    JSON.stringify({ event_type: "trade", status: "MATCHED", taker_order_id: "other", maker_orders: [{ order_id: "maker-2" }] })
-  );
+  tracker.processUserStreamMessage(JSON.stringify({ event_type: "trade", status: "MATCHED", taker_order_id: "other", maker_orders: [{ order_id: "maker-2" }] }));
   tracker.processUserStreamMessage(JSON.stringify({ event_type: "trade", status: "FAILED", taker_order_id: "other", maker_orders: [{ order_id: "maker-2" }] }));
 
   assert.deepEqual(received, [{ id: "maker-2", status: "failed" }]);
 });
 
-test("OrderConfirmationTracker emits cancelled status for order cancellation event", () => {
-  const tracker = OrderConfirmationTracker.create();
+test("OrderConfirmationTrackerService emits cancelled status for order cancellation event", () => {
+  const tracker = OrderConfirmationTrackerService.create();
 
   const received: Array<{ id: string; status: string }> = [];
-  tracker.addOrderListener((message) => {
+  tracker.addOrderListener((message): void => {
     received.push(message);
   });
   tracker.processUserStreamMessage(JSON.stringify({ event_type: "order", id: "order-cancelled", type: "CANCELLATION" }));
@@ -45,28 +43,30 @@ test("OrderConfirmationTracker emits cancelled status for order cancellation eve
   assert.deepEqual(received, [{ id: "order-cancelled", status: "cancelled" }]);
 });
 
-test("OrderConfirmationTracker ignores non-json messages", () => {
-  const tracker = OrderConfirmationTracker.create();
+test("OrderConfirmationTrackerService ignores non-json messages", () => {
+  const tracker = OrderConfirmationTrackerService.create();
   const received: Array<{ id: string; status: string }> = [];
-  tracker.addOrderListener((message) => {
+  tracker.addOrderListener((message): void => {
     received.push(message);
   });
+
   tracker.processUserStreamMessage("{bad-json");
+
   assert.deepEqual(received, []);
 });
 
-test("OrderConfirmationTracker catches reconnect listener errors and keeps processing", async () => {
-  const tracker = OrderConfirmationTracker.create();
-  let okListenerCalled = false;
+test("OrderConfirmationTrackerService catches reconnect listener errors and keeps processing", async () => {
+  const tracker = OrderConfirmationTrackerService.create();
+  let hasOkListenerRun = false;
 
-  tracker.addReconnectListener(async () => {
+  tracker.addReconnectListener(async (): Promise<void> => {
     throw new Error("boom");
   });
-  tracker.addReconnectListener(async () => {
-    okListenerCalled = true;
+  tracker.addReconnectListener(async (): Promise<void> => {
+    hasOkListenerRun = true;
   });
 
   await tracker.emitReconnect();
 
-  assert.equal(okListenerCalled, true);
+  assert.equal(hasOkListenerRun, true);
 });

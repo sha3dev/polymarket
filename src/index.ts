@@ -1,7 +1,8 @@
-export { PolymarketClient } from "./client/polymarket-client.ts";
-export type { PolymarketClientOptions } from "./client/polymarket-client.ts";
+export { PolymarketClient } from "./client/polymarket-client.service.ts";
+export { PackageInfoService } from "./package-info/package-info.service.ts";
+export type { PackageInfo } from "./package-info/package-info.service.ts";
 
-export { GammaMarketCatalogService, MarketLoadError, MarketNormalizationError } from "./markets/index.ts";
+export { MarketCatalogService } from "./market/market-catalog.service.ts";
 export type {
   BuildCryptoWindowSlugsOptions,
   CryptoMarketWindow,
@@ -12,9 +13,9 @@ export type {
   OrderBook,
   OrderBookLevel,
   PolymarketMarket
-} from "./markets/index.ts";
+} from "./market/market.types.ts";
 
-export { MarketStreamService, MarketStreamConnectionError, MarketStreamProtocolError } from "./stream/index.ts";
+export { MarketStreamService } from "./stream/market-stream.service.ts";
 export type {
   AddMarketListenerOptions,
   ConnectMarketStreamOptions,
@@ -25,17 +26,10 @@ export type {
   MarketPriceEvent,
   SubscribeMarketAssetsOptions,
   UnsubscribeMarketAssetsOptions
-} from "./stream/index.ts";
+} from "./stream/stream.types.ts";
 
-export {
-  OrderService,
-  OrderClientInitializationError,
-  OrderPlacementError,
-  OrderConfirmationTimeoutError,
-  OrderConfirmationFailedError
-} from "./orders/index.ts";
+export { OrderService } from "./order/order.service.ts";
 export type {
-  ClobApiKeyCreds,
   Direction,
   ExecutionType,
   InitializeOrderServiceOptions,
@@ -45,6 +39,4 @@ export type {
   PostedOrder,
   PostedOrderWithStatus,
   WaitForOrderConfirmationOptions
-} from "./orders/index.ts";
-
-export { PolymarketError } from "./shared/polymarket-error.ts";
+} from "./order/order.types.ts";

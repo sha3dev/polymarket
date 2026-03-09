@@ -1,22 +1,4 @@
 /**
- * @section imports:externals
- */
-
-// empty
-
-/**
- * @section imports:internals
- */
-
-// empty
-
-/**
- * @section consts
- */
-
-// empty
-
-/**
  * @section types
  */
 
@@ -25,42 +7,6 @@ type Invoice = { id: string; customerId: string; amount: number };
 
 export class InvoiceService {
   /**
-   * @section private:attributes
-   */
-
-  // empty
-
-  /**
-   * @section protected:attributes
-   */
-
-  // empty
-
-  /**
-   * @section private:properties
-   */
-
-  // empty
-
-  /**
-   * @section public:properties
-   */
-
-  // empty
-
-  /**
-   * @section constructor
-   */
-
-  // empty
-
-  /**
-   * @section static:properties
-   */
-
-  // empty
-
-  /**
    * @section factory
    */
 
@@ -68,18 +14,6 @@ export class InvoiceService {
     const service = new InvoiceService();
     return service;
   }
-
-  /**
-   * @section private:methods
-   */
-
-  // empty
-
-  /**
-   * @section protected:methods
-   */
-
-  // empty
 
   /**
    * @section public:methods

@@ -1,20 +1,8 @@
 /**
- * @section imports:externals
- */
-
-// empty
-
-/**
- * @section imports:internals
- */
-
-// empty
-
-/**
  * @section consts
  */
 
-const DEFAULT_INVOICE_PREFIX = "INV";
+const defaultInvoicePrefix = "INV";
 
 /**
  * @section types
@@ -25,18 +13,6 @@ type IdFactory = () => string;
 
 export class InvoiceIdBuilder {
   /**
-   * @section private:attributes
-   */
-
-  // empty
-
-  /**
-   * @section protected:attributes
-   */
-
-  // empty
-
-  /**
    * @section private:properties
    */
 
@@ -45,26 +21,14 @@ export class InvoiceIdBuilder {
   private readonly prefix: string;
 
   /**
-   * @section public:properties
-   */
-
-  // empty
-
-  /**
    * @section constructor
    */
 
-  public constructor(clock: Clock, idFactory: IdFactory, prefix = DEFAULT_INVOICE_PREFIX) {
+  public constructor(clock: Clock, idFactory: IdFactory, prefix = defaultInvoicePrefix) {
     this.clock = clock;
     this.idFactory = idFactory;
     this.prefix = prefix;
   }
-
-  /**
-   * @section static:properties
-   */
-
-  // empty
 
   /**
    * @section factory
@@ -83,12 +47,6 @@ export class InvoiceIdBuilder {
     const year = this.clock().getUTCFullYear();
     return year;
   }
-
-  /**
-   * @section protected:methods
-   */
-
-  // empty
 
   /**
    * @section public:methods

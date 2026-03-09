@@ -1,4 +1,5 @@
-const CONFIG = {
+const config = {
+  PACKAGE_NAME: "@sha3/polymarket",
   DEFAULT_CRYPTO_SYMBOLS: ["btc", "eth", "sol", "xrp"] as const,
   GAMMA_BASE_URL: "https://gamma-api.polymarket.com",
   CLOB_BASE_URL: "https://clob.polymarket.com",
@@ -22,4 +23,4 @@ const CONFIG = {
   DEFAULT_MAX_ALLOWED_SLIPPAGE: 0.02
 } as const;
 
-export default CONFIG;
+export default config;

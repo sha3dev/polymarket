@@ -1,8 +1,7 @@
 # Cursor Adapter
 
-- Apply `AGENTS.md` as the highest-priority local instruction file.
-- If repository code conflicts with `AGENTS.md`, `AGENTS.md` and `@sha3/code-standards` conventions MUST win.
-- Never modify `@sha3/code-standards` managed files (`AGENTS.md`, `ai/*`, `ai/examples/*`, tooling configs) unless user explicitly requests it.
-- Keep feature-folder organization intact.
-- Enforce single-return functions even during quick refactors.
-- Run `npm run check` after modifications.
+- Read `AGENTS.md` and `ai/contract.json` before editing.
+- Apply deterministic contract rules ahead of local heuristics or existing inconsistent code.
+- Keep managed files read-only unless the user explicitly asks for a standards update.
+- Rewrite `README.md` as real package documentation and document public exports and public methods after implementation.
+- Run `npm run check` and fix all reported issues before finishing.
