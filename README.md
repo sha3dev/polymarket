@@ -51,6 +51,7 @@ const marketCatalogService = MarketCatalogService.createDefault();
 const orderService = OrderService.createDefault();
 
 const market = await marketCatalogService.loadMarketBySlug({ slug: "btc-updown-5m-1767225900" });
+const priceToBeat = await marketCatalogService.getPriceToBeat({ market });
 await orderService.init({ privateKey: process.env.POLYMARKET_PRIVATE_KEY! });
 
 const postedOrder = await orderService.postOrder({
@@ -63,6 +64,8 @@ const postedOrder = await orderService.postOrder({
 });
 
 const confirmation = await orderService.waitForOrderConfirmation({ order: postedOrder! });
+
+console.log(priceToBeat, confirmation.status);
 ```
 
 ## Examples
@@ -76,6 +79,7 @@ const marketCatalogService = MarketCatalogService.createDefault();
 const orderService = OrderService.createDefault();
 
 const market = await marketCatalogService.loadMarketBySlug({ slug: "btc-updown-5m-1767225900" });
+const priceToBeat = await marketCatalogService.getPriceToBeat({ market });
 await orderService.init({ privateKey: process.env.POLYMARKET_PRIVATE_KEY! });
 
 const postedOrder = await orderService.postOrder({
@@ -91,6 +95,8 @@ const confirmation = await orderService.waitForOrderConfirmation({
   order: postedOrder!,
   timeoutMs: 15_000
 });
+
+console.log(priceToBeat, confirmation.status);
 ```
 
 Load multiple time-window markets:
@@ -106,6 +112,16 @@ const slugs = marketCatalogService.buildCryptoWindowSlugs({
 });
 
 const markets = await marketCatalogService.loadMarketsBySlugs({ slugs });
+```
+
+Load the market price to beat:
+
+```ts
+import { MarketCatalogService } from "@sha3/polymarket";
+
+const marketCatalogService = MarketCatalogService.createDefault();
+const market = await marketCatalogService.loadMarketBySlug({ slug: "btc-updown-5m-1767225900" });
+const priceToBeat = await marketCatalogService.getPriceToBeat({ market });
 ```
 
 Subscribe to prices and order books:
@@ -233,6 +249,10 @@ Loads one market and normalizes outcomes, token ids, dates, and numeric fields.
 
 Loads multiple slugs sequentially and preserves input order.
 
+#### `getPriceToBeat()`
+
+Loads the market `priceToBeat` from Polymarket's crypto price endpoint using the normalized market symbol, start time, end time, and time-window variant.
+
 #### `buildCryptoWindowSlugs()`
 
 Builds UTC-aligned `5m` and `15m` crypto market slugs.
@@ -244,6 +264,10 @@ Composes `buildCryptoWindowSlugs()` and `loadMarketsBySlugs()`.
 ### `BuildCryptoWindowSlugsOptions`
 
 Options for building aligned market slugs.
+
+### `GetPriceToBeatOptions`
+
+Options for loading `priceToBeat` for one normalized market.
 
 ### `CryptoMarketWindow`
 
@@ -432,6 +456,7 @@ Returns the configured package name.
 - `config.PACKAGE_NAME`: package name.
 - `config.DEFAULT_CRYPTO_SYMBOLS`: default symbols for slug building.
 - `config.GAMMA_BASE_URL`: Gamma base URL.
+- `config.PRICE_TO_BEAT_API_BASE_URL`: Polymarket crypto price endpoint used for `getPriceToBeat()`.
 - `config.CLOB_BASE_URL`: CLOB base URL.
 - `config.CLOB_CHAIN_ID`: chain id used by the trading client.
 - `config.WS_BASE_URL`: websocket base URL.

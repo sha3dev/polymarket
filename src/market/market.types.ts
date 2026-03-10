@@ -32,3 +32,5 @@ export type LoadMarketsBySlugsOptions = { slugs: string[] };
 export type BuildCryptoWindowSlugsOptions = { date: Date; window: CryptoMarketWindow; symbols?: CryptoSymbol[] };
 
 export type LoadCryptoWindowMarketsOptions = { date: Date; window: CryptoMarketWindow; symbols?: CryptoSymbol[] };
+
+export type GetPriceToBeatOptions = { market: PolymarketMarket };

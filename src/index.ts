@@ -7,6 +7,7 @@ export type {
   BuildCryptoWindowSlugsOptions,
   CryptoMarketWindow,
   CryptoSymbol,
+  GetPriceToBeatOptions,
   LoadCryptoWindowMarketsOptions,
   LoadMarketBySlugOptions,
   LoadMarketsBySlugsOptions,

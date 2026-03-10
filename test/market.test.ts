@@ -155,3 +155,43 @@ test("loadCryptoWindowMarkets delegates slug build and market loading", async ()
   assert.equal(markets.length, 1);
   assert.equal(markets[0]!.slug, "btc-updown-5m-1767225900");
 });
+
+test("getPriceToBeat builds the price endpoint URL and returns openPrice", async () => {
+  const requestedUrls: string[] = [];
+  const service = new MarketCatalogService({
+    httpClient: {
+      async fetch(url: string): Promise<{ ok: boolean; status: number; statusText: string; json(): Promise<unknown> }> {
+        requestedUrls.push(url);
+        const response = { ok: true, status: 200, statusText: "OK", async json(): Promise<unknown> { return { openPrice: 90_123.45 }; } };
+        return response;
+      }
+    }
+  });
+  const market = {
+    id: "m1",
+    slug: "btc-updown-5m-1767225900",
+    question: "BTC up?",
+    symbol: "btc" as const,
+    conditionId: "condition-1",
+    outcomes: ["Up", "Down"],
+    clobTokenIds: ["token-up", "token-down"],
+    upTokenId: "token-up",
+    downTokenId: "token-down",
+    orderMinSize: 1,
+    orderPriceMinTickSize: "0.01",
+    eventStartTime: "2026-01-01T00:00:00.000Z",
+    endDate: "2026-01-01T00:05:00.000Z",
+    start: new Date("2026-01-01T00:00:00.000Z"),
+    end: new Date("2026-01-01T00:05:00.000Z"),
+    raw: {}
+  };
+
+  const priceToBeat = await service.getPriceToBeat({ market });
+
+  assert.equal(priceToBeat, 90_123.45);
+  assert.equal(requestedUrls.length, 1);
+  assert.equal(requestedUrls[0]?.includes("symbol=BTC"), true);
+  assert.equal(requestedUrls[0]?.includes("variant=fiveminute"), true);
+  assert.equal(requestedUrls[0]?.includes("eventStartTime=2026-01-01T00%3A00%3A00.000Z"), true);
+  assert.equal(requestedUrls[0]?.includes("endDate=2026-01-01T00%3A05%3A00.000Z"), true);
+});

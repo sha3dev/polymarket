@@ -2,6 +2,7 @@ const config = {
   PACKAGE_NAME: "@sha3/polymarket",
   DEFAULT_CRYPTO_SYMBOLS: ["btc", "eth", "sol", "xrp"] as const,
   GAMMA_BASE_URL: "https://gamma-api.polymarket.com",
+  PRICE_TO_BEAT_API_BASE_URL: "https://polymarket.com/api/crypto/crypto-price",
   CLOB_BASE_URL: "https://clob.polymarket.com",
   CLOB_CHAIN_ID: 137,
   WS_BASE_URL: "wss://ws-subscriptions-clob.polymarket.com/ws",
