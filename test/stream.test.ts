@@ -108,6 +108,7 @@ test("MarketStreamService forwards parsed events to listeners and remove handler
 });
 
 test("MarketStreamService reconnects and re-subscribes desired assets", async () => {
+  const originalRandom = Math.random;
   const sockets: FakeWebSocket[] = [];
   const webSocketFactory: WebSocketFactory = {
     create(): WebSocketLike {
@@ -122,18 +123,118 @@ test("MarketStreamService reconnects and re-subscribes desired assets", async ()
   };
   const service = MarketStreamService.createDefault({ webSocketFactory });
 
-  await service.connect();
-  service.subscribe({ assetIds: ["token-a"] });
-  sockets[0]!.close();
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, 25);
-  });
+  Math.random = () => 0;
+  try {
+    await service.connect({ reconnectDelayMs: 10 });
+    service.subscribe({ assetIds: ["token-a"] });
+    sockets[0]!.close();
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 25);
+    });
+  } finally {
+    Math.random = originalRandom;
+  }
 
   assert.equal(sockets.length >= 2, true);
   assert.equal(
     sockets.slice(1).some((socket) => socket.sentPayloads.some((payload) => payload.includes('"operation":"subscribe"') && payload.includes("token-a"))),
     true
   );
+  await service.disconnect();
+});
+
+test("MarketStreamService applies jittered backoff when the market socket flaps", async () => {
+  const originalRandom = Math.random;
+  const sockets: FakeWebSocket[] = [];
+  const sleepCalls: number[] = [];
+  let now = 5_000;
+  const clock: Clock = {
+    now(): number {
+      return now;
+    },
+    async sleep(milliseconds: number): Promise<void> {
+      sleepCalls.push(milliseconds);
+      if (milliseconds === config.WS_HEARTBEAT_INTERVAL_MS) {
+        await new Promise<void>(() => {});
+      }
+    }
+  };
+  const webSocketFactory: WebSocketFactory = {
+    create(): WebSocketLike {
+      const socket = new FakeWebSocket();
+      sockets.push(socket);
+      setImmediate(() => {
+        socket.readyState = socket.OPEN;
+        socket.emit("open");
+      });
+      return socket;
+    }
+  };
+  Math.random = () => 0;
+  const service = MarketStreamService.createDefault({ webSocketFactory, clock });
+
+  try {
+    await service.connect({ reconnectDelayMs: 100 });
+    now += 1_000;
+    sockets[0]!.close();
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+    now += 1_000;
+    sockets[1]!.close();
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  assert.deepEqual(sleepCalls.filter((milliseconds) => milliseconds !== config.WS_HEARTBEAT_INTERVAL_MS), [0, 50]);
+  await service.disconnect();
+});
+
+test("MarketStreamService resets reconnect backoff after a stable session", async () => {
+  const originalRandom = Math.random;
+  const sockets: FakeWebSocket[] = [];
+  const sleepCalls: number[] = [];
+  let now = 10_000;
+  const clock: Clock = {
+    now(): number {
+      return now;
+    },
+    async sleep(milliseconds: number): Promise<void> {
+      sleepCalls.push(milliseconds);
+      if (milliseconds === config.WS_HEARTBEAT_INTERVAL_MS) {
+        await new Promise<void>(() => {});
+      }
+    }
+  };
+  const webSocketFactory: WebSocketFactory = {
+    create(): WebSocketLike {
+      const socket = new FakeWebSocket();
+      sockets.push(socket);
+      setImmediate(() => {
+        socket.readyState = socket.OPEN;
+        socket.emit("open");
+      });
+      return socket;
+    }
+  };
+  Math.random = () => 0;
+  const service = MarketStreamService.createDefault({ webSocketFactory, clock });
+
+  try {
+    await service.connect({ reconnectDelayMs: 100 });
+    now += 31_000;
+    sockets[0]!.close();
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  assert.deepEqual(sleepCalls.filter((milliseconds) => milliseconds !== config.WS_HEARTBEAT_INTERVAL_MS), [0]);
   await service.disconnect();
 });
 

@@ -22,6 +22,8 @@ import type {
  */
 
 const DEFAULT_SUBSCRIPTION_TYPE = "market";
+const STABLE_CONNECTION_THRESHOLD_MS = 30_000;
+const MAX_RECONNECT_DELAY_MULTIPLIER = 8;
 
 /**
  * @section types
@@ -40,6 +42,7 @@ export class MarketStreamService {
    */
 
   private reconnectDelayMs: number;
+  private reconnectAttemptCount: number;
   private isDisconnectRequested: boolean;
   private isHeartbeatActive: boolean;
 
@@ -57,6 +60,7 @@ export class MarketStreamService {
   private readonly lastPriceByAssetId: Map<string, number>;
   private readonly lastOrderBookByAssetId: Map<string, OrderBook>;
   private ws: WebSocketLike | null;
+  private connectedAtMs: number | null;
 
   /**
    * @section constructor
@@ -75,8 +79,10 @@ export class MarketStreamService {
     this.lastOrderBookByAssetId = new Map<string, OrderBook>();
     this.ws = null;
     this.reconnectDelayMs = config.DEFAULT_RECONNECT_DELAY_MS;
+    this.reconnectAttemptCount = 0;
     this.isDisconnectRequested = false;
     this.isHeartbeatActive = false;
+    this.connectedAtMs = null;
   }
 
   /**
@@ -117,6 +123,7 @@ export class MarketStreamService {
     const isCurrentSocket = this.ws === socket;
     if (isCurrentSocket) {
       this.logger.debug("[STREAM] Market websocket opened.");
+      this.connectedAtMs = this.clock.now();
       this.subscribedAssetIds.clear();
       this.startHeartbeatLoop();
       this.flushSubscriptions();
@@ -128,12 +135,12 @@ export class MarketStreamService {
     if (isCurrentSocket) {
       this.logger.warn("[STREAM] Market websocket closed.");
       this.ws = null;
+      this.updateReconnectAttemptCount();
+      this.connectedAtMs = null;
       this.stopHeartbeatLoop();
-      let isFirstAttempt = true;
       while (!this.isDisconnectRequested) {
-        if (!isFirstAttempt) {
-          await this.clock.sleep(this.reconnectDelayMs);
-        }
+        const reconnectDelayMs = this.getReconnectDelayMs();
+        await this.clock.sleep(reconnectDelayMs);
         try {
           await this.openSocket();
           break;
@@ -141,7 +148,6 @@ export class MarketStreamService {
           const reason = error instanceof Error ? error.message : String(error);
           this.logger.warn(`[STREAM] Reconnect attempt failed: ${reason}`);
         }
-        isFirstAttempt = false;
       }
     }
   }
@@ -245,6 +251,34 @@ export class MarketStreamService {
     return sent;
   }
 
+  private updateReconnectAttemptCount(): void {
+    const connectedAtMs = this.connectedAtMs;
+    const isStableConnection = connectedAtMs !== null && this.clock.now() - connectedAtMs >= STABLE_CONNECTION_THRESHOLD_MS;
+    if (isStableConnection) {
+      this.reconnectAttemptCount = 0;
+    }
+    if (!isStableConnection) {
+      this.reconnectAttemptCount += 1;
+    }
+  }
+
+  private getReconnectDelayMs(): number {
+    const hasImmediateReconnect = this.reconnectAttemptCount <= 1;
+    const exponent = Math.max(0, this.reconnectAttemptCount - 2);
+    const cappedExponent = Math.min(exponent, MAX_RECONNECT_DELAY_MULTIPLIER);
+    const jitterFactor = this.getReconnectJitterFactor();
+    const backoffDelayMs = this.reconnectDelayMs * 2 ** cappedExponent;
+    const reconnectDelayMs = hasImmediateReconnect ? 0 : Math.round(backoffDelayMs * jitterFactor);
+    return reconnectDelayMs;
+  }
+
+  private getReconnectJitterFactor(): number {
+    const minFactor = config.DEFAULT_RECONNECT_JITTER_MIN_FACTOR;
+    const maxFactor = config.DEFAULT_RECONNECT_JITTER_MAX_FACTOR;
+    const jitterFactor = minFactor + Math.random() * (maxFactor - minFactor);
+    return jitterFactor;
+  }
+
   /**
    * @section public:methods
    */
@@ -252,12 +286,14 @@ export class MarketStreamService {
   public async connect(options?: ConnectMarketStreamOptions): Promise<void> {
     this.isDisconnectRequested = false;
     this.reconnectDelayMs = options?.reconnectDelayMs ?? config.DEFAULT_RECONNECT_DELAY_MS;
+    this.reconnectAttemptCount = 0;
     await this.openSocket();
   }
 
   public async disconnect(): Promise<void> {
     this.isDisconnectRequested = true;
     this.stopHeartbeatLoop();
+    this.connectedAtMs = null;
     if (this.ws !== null) {
       this.ws.close();
       this.ws = null;
