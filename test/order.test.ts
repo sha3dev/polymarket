@@ -79,6 +79,9 @@ function createTestContext(options?: TestContextOptions): TestContext {
       return { balance: "10000000" };
     },
     async updateBalanceAllowance(): Promise<void> {},
+    async getOpenOrders(): Promise<Array<{ id: string; status: string; owner: string; maker_address: string; market: string; asset_id: string; side: string; original_size: string; size_matched: string; price: string; associate_trades: string[]; outcome: string; created_at: number; expiration: string; order_type: string }>> {
+      return [];
+    },
     async cancelOrder(): Promise<{ cancelled?: string[] }> {
       return { cancelled: [] };
     },
@@ -174,6 +177,42 @@ test("OrderService timeout path rechecks order and cancels when requested", asyn
   assert.equal(confirmation.ok, false);
   assert.equal(confirmation.status, "failed");
   assert.equal(cancelOrderCalls > 0, true);
+  await context.service.disconnect();
+});
+
+test("OrderService lists active orders pending confirmation", async () => {
+  const context = createTestContext({
+    overrides: {
+      async getOpenOrders(): Promise<Array<{ id: string; status: string; owner: string; maker_address: string; market: string; asset_id: string; side: string; original_size: string; size_matched: string; price: string; associate_trades: string[]; outcome: string; created_at: number; expiration: string; order_type: string }>> {
+        return [{ id: "open-1", status: "LIVE", owner: "owner-1", maker_address: "maker-1", market: "market-1", asset_id: "asset-1", side: "BUY", original_size: "5", size_matched: "0", price: "0.43", associate_trades: [], outcome: "Yes", created_at: 1, expiration: "2", order_type: "GTC" }];
+      }
+    }
+  });
+  await context.service.init({ privateKey: "0xabc" });
+
+  const activeOrders = await context.service.listActiveOrdersPendingConfirmation();
+
+  assert.equal(activeOrders.length, 1);
+  assert.equal(activeOrders[0]!.id, "open-1");
+  await context.service.disconnect();
+});
+
+test("OrderService cancels an order by id", async () => {
+  let cancelledOrderId: string | null = null;
+  const context = createTestContext({
+    overrides: {
+      async cancelOrder(input: { orderID: string }): Promise<{ cancelled?: string[] }> {
+        cancelledOrderId = input.orderID;
+        return { cancelled: [input.orderID] };
+      }
+    }
+  });
+  await context.service.init({ privateKey: "0xabc" });
+
+  const isCancelled = await context.service.cancelOrderById("order-cancelled");
+
+  assert.equal(cancelledOrderId, "order-cancelled");
+  assert.equal(isCancelled, true);
   await context.service.disconnect();
 });
 

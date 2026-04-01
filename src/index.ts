@@ -36,6 +36,7 @@ export type {
   InitializeOrderServiceOptions,
   Operation,
   OrderStatus,
+  PendingConfirmationOrder,
   PostOrderOptions,
   PostedOrder,
   PostedOrderWithStatus,

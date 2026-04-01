@@ -1,3 +1,4 @@
+import type { OpenOrder as ClobOpenOrder } from "@polymarket/clob-client";
 import type { SignatureType } from "@polymarket/order-utils";
 
 import type { PolymarketMarket } from "../market/market.types.ts";
@@ -46,10 +47,13 @@ export type TradeInfo = { status: string; taker_order_id?: string; maker_orders?
 
 export type CancelOrderResponse = { cancelled?: string[] };
 
+export type PendingConfirmationOrder = ClobOpenOrder;
+
 export type ClobClientLike = {
   deriveApiKey(): Promise<ClobApiKeyCreds>;
   getBalanceAllowance(input: Record<string, unknown>): Promise<BalanceAllowance>;
   updateBalanceAllowance(input: Record<string, unknown>): Promise<void>;
+  getOpenOrders(): Promise<PendingConfirmationOrder[]>;
   cancelOrder(input: { orderID: string }): Promise<CancelOrderResponse>;
   cancelMarketOrders(input: { market: string; asset_id: string }): Promise<CancelOrderResponse>;
   createAndPostOrder<TOrderType>(order: Record<string, unknown>, options: { tickSize: string }, orderType: TOrderType): Promise<ClobPostResponse>;

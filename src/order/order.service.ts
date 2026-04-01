@@ -23,6 +23,7 @@ import type {
   ExecutionType,
   InitializeOrderServiceOptions,
   OrderStatus,
+  PendingConfirmationOrder,
   PostOrderOptions,
   PostedOrder,
   PostedOrderWithStatus,
@@ -436,6 +437,20 @@ export class OrderService {
     const balanceResponse = await this.clobClient!.getBalanceAllowance({ asset_type: AssetType.COLLATERAL });
     const balance = this.numberNormalizer.round(Number(balanceResponse.balance ?? 0) / 1_000_000, 2);
     return balance;
+  }
+
+  public async listActiveOrdersPendingConfirmation(): Promise<PendingConfirmationOrder[]> {
+    this.ensureInitialized();
+    const activeOrders = await this.clobClient!.getOpenOrders();
+    return activeOrders;
+  }
+
+  public async cancelOrderById(orderId: string): Promise<boolean> {
+    this.ensureInitialized();
+    const cancelResponse = await this.clobClient!.cancelOrder({ orderID: orderId });
+    const cancelledOrderIds = cancelResponse.cancelled ?? [];
+    const isCancelled = cancelledOrderIds.includes(orderId);
+    return isCancelled;
   }
 
   public async postOrder(options: PostOrderOptions): Promise<PostedOrder | null> {

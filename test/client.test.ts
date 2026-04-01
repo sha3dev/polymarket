@@ -47,3 +47,27 @@ test("PolymarketClient passes stream connect options", async () => {
 
   assert.equal(reconnectDelayMs, 321);
 });
+
+test("PolymarketClient delegates open-order listing and cancellation to OrderService", async () => {
+  let listCalls = 0;
+  let cancelledOrderId: string | null = null;
+  const orders = OrderService.createDefault();
+  orders.listActiveOrdersPendingConfirmation = async () => {
+    listCalls += 1;
+    return [{ id: "order-1", status: "LIVE", owner: "owner-1", maker_address: "maker-1", market: "market-1", asset_id: "asset-1", side: "BUY", original_size: "10", size_matched: "0", price: "0.45", associate_trades: [], outcome: "Yes", created_at: 1, expiration: "2", order_type: "GTC" }];
+  };
+  orders.cancelOrderById = async (orderId: string): Promise<boolean> => {
+    cancelledOrderId = orderId;
+    return true;
+  };
+  const client = PolymarketClient.createDefault({ orders });
+
+  const activeOrders = await client.listActiveOrdersPendingConfirmation();
+  const isCancelled = await client.cancelOrderById("order-1");
+
+  assert.equal(listCalls, 1);
+  assert.equal(activeOrders.length, 1);
+  assert.equal(activeOrders[0]!.id, "order-1");
+  assert.equal(cancelledOrderId, "order-1");
+  assert.equal(isCancelled, true);
+});

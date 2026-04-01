@@ -4,6 +4,7 @@
 
 import { MarketCatalogService } from "../market/market-catalog.service.ts";
 import { OrderService } from "../order/order.service.ts";
+import type { PendingConfirmationOrder } from "../order/order.types.ts";
 import { MarketStreamService } from "../stream/market-stream.service.ts";
 import type { ConnectMarketStreamOptions } from "../stream/stream.types.ts";
 
@@ -64,5 +65,15 @@ export class PolymarketClient {
   public async disconnect(): Promise<void> {
     await this.stream.disconnect();
     await this.orders.disconnect();
+  }
+
+  public async listActiveOrdersPendingConfirmation(): Promise<PendingConfirmationOrder[]> {
+    const activeOrders = await this.orders.listActiveOrdersPendingConfirmation();
+    return activeOrders;
+  }
+
+  public async cancelOrderById(orderId: string): Promise<boolean> {
+    const isCancelled = await this.orders.cancelOrderById(orderId);
+    return isCancelled;
   }
 }
