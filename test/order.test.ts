@@ -3,9 +3,12 @@ import { test } from "node:test";
 
 import config from "../src/config.ts";
 import type { PolymarketMarket } from "../src/market/market.types.ts";
+import { ClobClientFactoryService } from "../src/order/clob-client-factory.service.ts";
 import { OrderService } from "../src/order/order.service.ts";
 import type { ClobApiKeyCreds, ClobClientFactory, ClobClientLike } from "../src/order/order.types.ts";
 import type { Clock, WebSocketFactory, WebSocketLike } from "../src/shared/shared-contract.types.ts";
+
+const VALID_PRIVATE_KEY = "0x0123456789012345678901234567890123456789012345678901234567890123";
 
 class FakeWebSocket implements WebSocketLike {
   public readonly OPEN = 1;
@@ -122,6 +125,13 @@ test("OrderService requires init before balance calls", async () => {
   const service = OrderService.createDefault();
 
   await assert.rejects(async () => service.getMyBalance(), /Call init\(\)/);
+});
+
+test("ClobClientFactoryService builds CLOB clients from a real signer", async () => {
+  const service = ClobClientFactoryService.create();
+  const client = await service.createUnauthedClient({ privateKey: VALID_PRIVATE_KEY });
+
+  assert.equal(typeof client.deriveApiKey, "function");
 });
 
 test("OrderService posts taker order and confirms through user websocket", async () => {

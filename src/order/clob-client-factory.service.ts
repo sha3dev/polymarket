@@ -2,6 +2,7 @@
  * @section imports:externals
  */
 
+import { Wallet } from "@ethersproject/wallet";
 import { ClobClient } from "@polymarket/clob-client";
 
 /**
@@ -27,7 +28,8 @@ export class ClobClientFactoryService {
 
   public async createUnauthedClient(options: ClobClientFactoryCreateOptions): Promise<ClobClientLike> {
     const clobClientConstructor = ClobClient as unknown as new (...args: unknown[]) => ClobClientLike;
-    const client = new clobClientConstructor(config.CLOB_BASE_URL, config.CLOB_CHAIN_ID, options.privateKey, undefined, options.signatureType, options.funderAddress);
+    const signer = new Wallet(options.privateKey);
+    const client = new clobClientConstructor(config.CLOB_BASE_URL, config.CLOB_CHAIN_ID, signer, undefined, options.signatureType, options.funderAddress);
     const clobClient = client as unknown as ClobClientLike;
     return clobClient;
   }
@@ -36,7 +38,8 @@ export class ClobClientFactoryService {
     options: ClobClientFactoryCreateOptions & { apiKeyCreds: ClobApiKeyCreds }
   ): Promise<ClobClientLike> {
     const clobClientConstructor = ClobClient as unknown as new (...args: unknown[]) => ClobClientLike;
-    const client = new clobClientConstructor(config.CLOB_BASE_URL, config.CLOB_CHAIN_ID, options.privateKey, options.apiKeyCreds, options.signatureType, options.funderAddress);
+    const signer = new Wallet(options.privateKey);
+    const client = new clobClientConstructor(config.CLOB_BASE_URL, config.CLOB_CHAIN_ID, signer, options.apiKeyCreds, options.signatureType, options.funderAddress);
     const clobClient = client as unknown as ClobClientLike;
     return clobClient;
   }
