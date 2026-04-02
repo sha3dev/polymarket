@@ -408,6 +408,25 @@ test("OrderService cancels an order by id", async () => {
   await context.service.disconnect();
 });
 
+test("OrderService exposes sellable size with six-decimal venue precision", async () => {
+  const context = createTestContext({
+    overrides: {
+      async getBalanceAllowance(): Promise<{ balance?: string }> {
+        return { balance: "5986543" };
+      },
+    },
+  });
+  await context.service.init({ privateKey: "0xabc" });
+
+  const sellableSize = await context.service.getSellableSize({
+    market: createMarket(),
+    direction: "up",
+  });
+
+  assert.equal(sellableSize, 5.986543);
+  await context.service.disconnect();
+});
+
 test("OrderService maker sell caps size with sellable balance", async () => {
   let postedSize = 0;
   const context = createTestContext({

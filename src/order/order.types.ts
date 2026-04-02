@@ -29,6 +29,11 @@ export type PostOrderOptions = {
   readonly paperMode?: boolean;
 };
 
+export type GetSellableSizeOptions = {
+  readonly market: PolymarketMarket;
+  readonly direction: Direction;
+};
+
 export type PostedOrder = PostOrderOptions & { readonly id: string; readonly date: Date };
 
 export type WaitForOrderConfirmationOptions = { readonly order: PostedOrder; readonly timeoutMs?: number; readonly shouldCancelOnTimeout?: boolean };

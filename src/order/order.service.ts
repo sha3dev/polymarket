@@ -21,6 +21,7 @@ import type {
   ClobClientFactory,
   ClobClientLike,
   ExecutionType,
+  GetSellableSizeOptions,
   InitializeOrderServiceOptions,
   OrderStatus,
   OpenOrdersResponse,
@@ -269,7 +270,13 @@ export class OrderService {
     return normalizedPrice;
   }
 
-  private async getSellableSize(tokenId: string): Promise<number> {
+  private getDirectionTokenId(market: PolymarketMarket, direction: "up" | "down"): string {
+    const tokenId = direction === "up" ? market.upTokenId : market.downTokenId;
+
+    return tokenId;
+  }
+
+  private async getTokenSellableSize(tokenId: string): Promise<number> {
     this.ensureInitialized();
     const balanceInput = { asset_type: AssetType.CONDITIONAL, token_id: tokenId };
     try {
@@ -348,7 +355,7 @@ export class OrderService {
 
   private async cancelOppositeOrdersBeforeSell(market: PolymarketMarket, direction: "up" | "down"): Promise<void> {
     this.ensureInitialized();
-    const oppositeTokenId = direction === "up" ? market.downTokenId : market.upTokenId;
+    const oppositeTokenId = this.getDirectionTokenId(market, direction === "up" ? "down" : "up");
     await this.clobClient!.cancelMarketOrders({ market: market.conditionId, asset_id: oppositeTokenId });
   }
 
@@ -357,7 +364,7 @@ export class OrderService {
     let adjustedSize = this.numberNormalizer.round(options.size, config.ORDER_SIZE_DECIMALS);
     let sellableSize: number | null = null;
     if (options.op === "sell") {
-      sellableSize = await this.getSellableSize(orderContext.tokenId);
+      sellableSize = await this.getTokenSellableSize(orderContext.tokenId);
       adjustedSize = sellableSize;
     }
     const adjustedPrice = this.normalizeOrderPrice(options.price, orderContext.tickSize);
@@ -392,7 +399,7 @@ export class OrderService {
       this.validateSafeBuyAmount(amount);
     }
     if (options.op === "sell") {
-      sellableSize = await this.getSellableSize(orderContext.tokenId);
+      sellableSize = await this.getTokenSellableSize(orderContext.tokenId);
       amount = sellableSize;
       adjustedPrice = this.normalizeOrderPrice(options.price - this.maxAllowedSlippage, orderContext.tickSize);
       await this.cancelOppositeOrdersBeforeSell(options.market, options.direction);
@@ -571,6 +578,13 @@ export class OrderService {
     const cancelledOrderIds = cancelResponse.cancelled ?? [];
     const isCancelled = cancelledOrderIds.includes(orderId);
     return isCancelled;
+  }
+
+  public async getSellableSize(options: GetSellableSizeOptions): Promise<number> {
+    const tokenId = this.getDirectionTokenId(options.market, options.direction);
+    const sellableSize = await this.getTokenSellableSize(tokenId);
+
+    return sellableSize;
   }
 
   public async reconcileOrderStatus(options: ReconcileOrderStatusOptions): Promise<OrderStatus> {
