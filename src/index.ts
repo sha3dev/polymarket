@@ -33,6 +33,7 @@ export { OrderService } from "./order/order.service.ts";
 export type {
   Direction,
   ExecutionType,
+  GetSellableSizeOptions,
   InitializeOrderServiceOptions,
   Operation,
   OrderStatus,
