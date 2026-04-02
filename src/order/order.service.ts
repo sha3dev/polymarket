@@ -40,6 +40,7 @@ import type {
 const DEFAULT_SIGNATURE_TYPE: SignatureType = 1;
 const TRADE_RECHECK_ATTEMPTS = 5;
 const TRADE_RECHECK_DELAY_MS = 250;
+const SELLABLE_BALANCE_DECIMALS = 6;
 
 /**
  * @section types
@@ -63,6 +64,7 @@ export class OrderService {
 
   private reconnectDelayMs: number;
   private maxAllowedSlippage: number;
+  private postOrderFailureReason: string | null;
   private isDisconnectRequested: boolean;
   private isHeartbeatActive: boolean;
 
@@ -99,6 +101,7 @@ export class OrderService {
     this.initOptions = null;
     this.reconnectDelayMs = config.DEFAULT_RECONNECT_DELAY_MS;
     this.maxAllowedSlippage = config.DEFAULT_MAX_ALLOWED_SLIPPAGE;
+    this.postOrderFailureReason = null;
     this.isDisconnectRequested = false;
     this.isHeartbeatActive = false;
   }
@@ -277,7 +280,7 @@ export class OrderService {
     }
     const balanceAllowance = await this.clobClient!.getBalanceAllowance(balanceInput);
     const microBalance = Number(balanceAllowance.balance ?? 0);
-    const sellableSize = Math.max(0, Math.floor((microBalance / 1_000_000) * 100) / 100);
+    const sellableSize = this.numberNormalizer.round(Math.max(0, microBalance / 1_000_000), SELLABLE_BALANCE_DECIMALS);
     return sellableSize;
   }
 
@@ -305,6 +308,32 @@ export class OrderService {
     return postedOrder;
   }
 
+  private formatOrderFailureContext(
+    options: PostOrderOptions,
+    adjustedSize: number | null,
+    adjustedPrice: number | null,
+    sellableSize: number | null,
+    clobResponse?: unknown
+  ): string {
+    const responseText = clobResponse === undefined ? "n/a" : JSON.stringify(clobResponse);
+    const failureContext =
+      `market=${options.market.slug} op=${options.op} direction=${options.direction} requestedSize=${options.size.toFixed(4)} ` +
+      `sellableSize=${sellableSize?.toFixed(4) ?? "n/a"} postedAmount=${(adjustedSize ?? 0).toFixed(4)} ` +
+      `adjustedPrice=${(adjustedPrice ?? 0).toFixed(4)} response=${responseText}`;
+
+    return failureContext;
+  }
+
+  private setPostOrderFailureReason(
+    options: PostOrderOptions,
+    adjustedSize: number | null,
+    adjustedPrice: number | null,
+    sellableSize: number | null,
+    clobResponse?: unknown
+  ): void {
+    this.postOrderFailureReason = this.formatOrderFailureContext(options, adjustedSize, adjustedPrice, sellableSize, clobResponse);
+  }
+
   private async postPaperOrder(options: PostOrderOptions): Promise<PostedOrder> {
     await this.clock.sleep(config.DEFAULT_PAPER_MODE_DELAY_MS);
     const postedOrder = this.buildPostedOrder(options, String(this.clock.now()), options.price, options.size);
@@ -326,9 +355,10 @@ export class OrderService {
   private async postMakerOrder(options: PostOrderOptions, orderContext: OrderContext): Promise<PostedOrder | null> {
     this.ensureInitialized();
     let adjustedSize = this.numberNormalizer.round(options.size, config.ORDER_SIZE_DECIMALS);
+    let sellableSize: number | null = null;
     if (options.op === "sell") {
-      const sellableSize = await this.getSellableSize(orderContext.tokenId);
-      adjustedSize = this.numberNormalizer.round(Math.min(adjustedSize, sellableSize), config.ORDER_SIZE_DECIMALS);
+      sellableSize = await this.getSellableSize(orderContext.tokenId);
+      adjustedSize = sellableSize;
     }
     const adjustedPrice = this.normalizeOrderPrice(options.price, orderContext.tickSize);
     let postedOrder: PostedOrder | null = null;
@@ -341,7 +371,11 @@ export class OrderService {
       if (response.success && response.orderID) {
         this.tracker.markOrderInProcess(response.orderID);
         postedOrder = this.buildPostedOrder(options, response.orderID, adjustedPrice, adjustedSize);
+      } else {
+        this.setPostOrderFailureReason(options, adjustedSize, adjustedPrice, sellableSize, response);
       }
+    } else {
+      this.setPostOrderFailureReason(options, adjustedSize, adjustedPrice, sellableSize);
     }
     return postedOrder;
   }
@@ -359,7 +393,7 @@ export class OrderService {
     }
     if (options.op === "sell") {
       sellableSize = await this.getSellableSize(orderContext.tokenId);
-      amount = this.numberNormalizer.round(Math.min(options.size, sellableSize), config.ORDER_SIZE_DECIMALS);
+      amount = sellableSize;
       adjustedPrice = this.normalizeOrderPrice(options.price - this.maxAllowedSlippage, orderContext.tickSize);
       await this.cancelOppositeOrdersBeforeSell(options.market, options.direction);
       postedSize = amount;
@@ -375,11 +409,13 @@ export class OrderService {
         this.tracker.markOrderInProcess(response.orderID);
         postedOrder = this.buildPostedOrder(options, response.orderID, adjustedPrice, postedSize);
       } else {
+        this.setPostOrderFailureReason(options, amount, adjustedPrice, sellableSize, response);
         this.logger.warn(
           `[ORDER] Taker order rejected market=${options.market.slug} op=${options.op} direction=${options.direction} requestedSize=${options.size.toFixed(4)} sellableSize=${sellableSize?.toFixed(4) ?? "n/a"} postedAmount=${amount.toFixed(4)} adjustedPrice=${adjustedPrice.toFixed(4)} success=${String(response.success)} orderId=${response.orderID ?? "n/a"} response=${JSON.stringify(response)}`,
         );
       }
     } else {
+      this.setPostOrderFailureReason(options, amount, adjustedPrice, sellableSize);
       this.logger.warn(
         `[ORDER] Taker order skipped market=${options.market.slug} op=${options.op} direction=${options.direction} requestedSize=${options.size.toFixed(4)} sellableSize=${sellableSize?.toFixed(4) ?? "n/a"} postedAmount=${amount.toFixed(4)} adjustedPrice=${adjustedPrice.toFixed(4)}`,
       );
@@ -559,6 +595,7 @@ export class OrderService {
   public async postOrder(options: PostOrderOptions): Promise<PostedOrder | null> {
     this.ensureInitialized();
     let postedOrder: PostedOrder | null = null;
+    this.postOrderFailureReason = null;
     if (options.paperMode) {
       postedOrder = await this.postPaperOrder(options);
     }
@@ -573,7 +610,10 @@ export class OrderService {
       }
     }
     if (!postedOrder) {
-      throw new Error(`Failed to post order for market=${options.market.slug} op=${options.op} direction=${options.direction}.`);
+      const failureReason = this.postOrderFailureReason ?? "no detailed CLOB rejection context was captured";
+      throw new Error(
+        `Failed to post order for market=${options.market.slug} op=${options.op} direction=${options.direction}. Reason: ${failureReason}.`,
+      );
     }
     return postedOrder;
   }

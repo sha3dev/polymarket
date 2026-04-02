@@ -463,6 +463,35 @@ test("OrderService taker sell cancels opposite orders and uses sellable amount",
   await context.service.disconnect();
 });
 
+test("OrderService taker sell uses full venue sellable balance without truncating to two decimals", async () => {
+  let postedAmount = 0;
+  const context = createTestContext({
+    overrides: {
+      async getBalanceAllowance(): Promise<{ balance?: string }> {
+        return { balance: "5986543" };
+      },
+      async createAndPostMarketOrder(order: Record<string, unknown>): Promise<{ success?: boolean; orderID?: string }> {
+        postedAmount = Number(order.amount ?? 0);
+        return { success: true, orderID: "sell-all-order" };
+      },
+    },
+  });
+  await context.service.init({ privateKey: "0xabc" });
+
+  const postedOrder = await context.service.postOrder({
+    market: createMarket(),
+    size: 5.98,
+    price: 0.51,
+    direction: "up",
+    op: "sell",
+    executionType: "taker",
+  });
+
+  assert.equal(postedOrder!.size, 5.986543);
+  assert.equal(postedAmount, 5.986543);
+  await context.service.disconnect();
+});
+
 test("OrderService paper mode avoids posting and confirms after delay", async () => {
   const context = createTestContext({
     overrides: {
@@ -481,6 +510,35 @@ test("OrderService paper mode avoids posting and confirms after delay", async ()
 
   assert.equal(typeof postedOrder!.id, "string");
   assert.equal(confirmation.status, "confirmed");
+  await context.service.disconnect();
+});
+
+test("OrderService propagates detailed CLOB rejection reasons when taker posting fails", async () => {
+  const context = createTestContext({
+    overrides: {
+      async createAndPostMarketOrder(): Promise<{ success?: boolean; orderID?: string; error?: string; status?: string }> {
+        return {
+          error: "order couldn't be fully filled. FOK orders are fully filled or killed.",
+          status: "400",
+        };
+      },
+    },
+  });
+  await context.service.init({ privateKey: "0xabc" });
+
+  await assert.rejects(
+    async () =>
+      context.service.postOrder({
+        market: createMarket(),
+        size: 6,
+        price: 0.59,
+        direction: "up",
+        op: "buy",
+        executionType: "taker",
+      }),
+    /order couldn't be fully filled\. FOK orders are fully filled or killed\./,
+  );
+
   await context.service.disconnect();
 });
 
