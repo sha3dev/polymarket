@@ -350,13 +350,14 @@ export class OrderService {
     let adjustedPrice = 0;
     let amount = 0;
     let postedSize = options.size;
+    let sellableSize: number | null = null;
     if (options.op === "buy") {
       adjustedPrice = this.normalizeOrderPrice(options.price + this.maxAllowedSlippage, orderContext.tickSize);
       amount = this.numberNormalizer.round(options.size * adjustedPrice, config.ORDER_AMOUNT_DECIMALS);
       this.validateSafeBuyAmount(amount);
     }
     if (options.op === "sell") {
-      const sellableSize = await this.getSellableSize(orderContext.tokenId);
+      sellableSize = await this.getSellableSize(orderContext.tokenId);
       amount = this.numberNormalizer.round(Math.min(options.size, sellableSize), config.ORDER_SIZE_DECIMALS);
       adjustedPrice = this.normalizeOrderPrice(options.price - this.maxAllowedSlippage, orderContext.tickSize);
       await this.cancelOppositeOrdersBeforeSell(options.market, options.direction);
@@ -372,7 +373,15 @@ export class OrderService {
       if (response.success && response.orderID) {
         this.tracker.markOrderInProcess(response.orderID);
         postedOrder = this.buildPostedOrder(options, response.orderID, adjustedPrice, postedSize);
+      } else {
+        this.logger.warn(
+          `[ORDER] Taker order rejected market=${options.market.slug} op=${options.op} direction=${options.direction} requestedSize=${options.size.toFixed(4)} sellableSize=${sellableSize?.toFixed(4) ?? "n/a"} postedAmount=${amount.toFixed(4)} adjustedPrice=${adjustedPrice.toFixed(4)} success=${String(response.success)} orderId=${response.orderID ?? "n/a"} response=${JSON.stringify(response)}`,
+        );
       }
+    } else {
+      this.logger.warn(
+        `[ORDER] Taker order skipped market=${options.market.slug} op=${options.op} direction=${options.direction} requestedSize=${options.size.toFixed(4)} sellableSize=${sellableSize?.toFixed(4) ?? "n/a"} postedAmount=${amount.toFixed(4)} adjustedPrice=${adjustedPrice.toFixed(4)}`,
+      );
     }
     return postedOrder;
   }
