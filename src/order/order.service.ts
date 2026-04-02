@@ -368,7 +368,7 @@ export class OrderService {
       const response = await this.clobClient!.createAndPostMarketOrder(
         { tokenID: orderContext.tokenId, side: this.getOrderSide(options.op), price: adjustedPrice, amount },
         { tickSize: orderContext.tickSize },
-        OrderType.FOK
+        options.op === "sell" ? OrderType.FAK : OrderType.FOK
       );
       if (response.success && response.orderID) {
         this.tracker.markOrderInProcess(response.orderID);

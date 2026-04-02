@@ -386,6 +386,7 @@ test("OrderService maker sell caps size with sellable balance", async () => {
 test("OrderService taker sell cancels opposite orders and uses sellable amount", async () => {
   const canceledInputs: Array<{ market: string; asset_id: string }> = [];
   let postedAmount = 0;
+  let postedOrderType: unknown = null;
   const context = createTestContext({
     overrides: {
       async getBalanceAllowance(): Promise<{ balance?: string }> {
@@ -395,8 +396,9 @@ test("OrderService taker sell cancels opposite orders and uses sellable amount",
         canceledInputs.push(input);
         return { cancelled: ["x"] };
       },
-      async createAndPostMarketOrder(order: Record<string, unknown>): Promise<{ success?: boolean; orderID?: string }> {
+      async createAndPostMarketOrder(order: Record<string, unknown>, _options: { tickSize: string }, orderType: unknown): Promise<{ success?: boolean; orderID?: string }> {
         postedAmount = Number(order.amount ?? 0);
+        postedOrderType = orderType;
         return { success: true, orderID: "taker-sell-order" };
       }
     }
@@ -408,6 +410,7 @@ test("OrderService taker sell cancels opposite orders and uses sellable amount",
   assert.equal(postedOrder!.id, "taker-sell-order");
   assert.equal(postedOrder!.size, 1.2);
   assert.equal(postedAmount, 1.2);
+  assert.equal(String(postedOrderType), "FAK");
   assert.deepEqual(canceledInputs[0], { market: "condition-1", asset_id: "up-token" });
   await context.service.disconnect();
 });
