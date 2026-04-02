@@ -23,6 +23,7 @@ import type {
   ExecutionType,
   InitializeOrderServiceOptions,
   OrderStatus,
+  OpenOrdersResponse,
   PendingConfirmationOrder,
   PostOrderOptions,
   PostedOrder,
@@ -401,6 +402,34 @@ export class OrderService {
     return pendingConfirmationOrder;
   }
 
+  private hasWrappedOpenOrdersResponse(
+    openOrdersResponse: OpenOrdersResponse
+  ): openOrdersResponse is { readonly data?: readonly PendingConfirmationOrder[] | null } {
+    const hasWrappedResponse = !Array.isArray(openOrdersResponse) && openOrdersResponse !== null && openOrdersResponse !== undefined;
+
+    return hasWrappedResponse;
+  }
+
+  private normalizeOpenOrdersResponse(openOrdersResponse: OpenOrdersResponse): PendingConfirmationOrder[] {
+    let pendingConfirmationOrders: PendingConfirmationOrder[] = [];
+
+    if (Array.isArray(openOrdersResponse)) {
+      pendingConfirmationOrders = [...openOrdersResponse];
+    } else if (this.hasWrappedOpenOrdersResponse(openOrdersResponse) && Array.isArray(openOrdersResponse.data)) {
+      pendingConfirmationOrders = [...openOrdersResponse.data];
+    }
+
+    return pendingConfirmationOrders;
+  }
+
+  private async getOpenOrdersSafe(): Promise<PendingConfirmationOrder[]> {
+    this.ensureInitialized();
+    const openOrdersResponse = await this.clobClient!.getOpenOrders();
+    const pendingConfirmationOrders = this.normalizeOpenOrdersResponse(openOrdersResponse);
+
+    return pendingConfirmationOrders;
+  }
+
   private async resolveTrackedOrderStatus(
     orderId: string,
     maxAttempts: number,
@@ -409,7 +438,7 @@ export class OrderService {
     let orderStatus: OrderStatus = "failed";
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-      const pendingConfirmationOrders = await this.clobClient!.getOpenOrders();
+      const pendingConfirmationOrders = await this.getOpenOrdersSafe();
       const pendingConfirmationOrder = this.findPendingOpenOrderById(pendingConfirmationOrders, orderId);
       const trades = await this.clobClient!.getTrades();
       const trade = this.findTradeForOrder(trades, orderId);
@@ -496,7 +525,7 @@ export class OrderService {
 
   public async listActiveOrdersPendingConfirmation(): Promise<PendingConfirmationOrder[]> {
     this.ensureInitialized();
-    const activeOrders = await this.clobClient!.getOpenOrders();
+    const activeOrders = await this.getOpenOrdersSafe();
     return activeOrders;
   }
 

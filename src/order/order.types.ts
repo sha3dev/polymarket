@@ -57,11 +57,13 @@ export type CancelOrderResponse = { cancelled?: string[] };
 
 export type PendingConfirmationOrder = ClobOpenOrder;
 
+export type OpenOrdersResponse = readonly PendingConfirmationOrder[] | { readonly data?: readonly PendingConfirmationOrder[] | null } | null | undefined;
+
 export type ClobClientLike = {
   deriveApiKey(): Promise<ClobApiKeyCreds>;
   getBalanceAllowance(input: Record<string, unknown>): Promise<BalanceAllowance>;
   updateBalanceAllowance(input: Record<string, unknown>): Promise<void>;
-  getOpenOrders(): Promise<PendingConfirmationOrder[]>;
+  getOpenOrders(): Promise<OpenOrdersResponse>;
   cancelOrder(input: { orderID: string }): Promise<CancelOrderResponse>;
   cancelMarketOrders(input: { market: string; asset_id: string }): Promise<CancelOrderResponse>;
   createAndPostOrder<TOrderType>(order: Record<string, unknown>, options: { tickSize: string }, orderType: TOrderType): Promise<ClobPostResponse>;

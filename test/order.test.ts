@@ -341,6 +341,54 @@ test("OrderService lists active orders pending confirmation", async () => {
   await context.service.disconnect();
 });
 
+test("OrderService accepts getOpenOrders responses wrapped in data", async () => {
+  const context = createTestContext({
+    overrides: {
+      async getOpenOrders(): Promise<{ data?: Array<{ id: string; status: string; owner: string; maker_address: string; market: string; asset_id: string; side: string; original_size: string; size_matched: string; price: string; associate_trades: string[]; outcome: string; created_at: number; expiration: string; order_type: string }> }> {
+        return {
+          data: [{ id: "open-data-1", status: "LIVE", owner: "owner-1", maker_address: "maker-1", market: "market-1", asset_id: "asset-1", side: "BUY", original_size: "5", size_matched: "0", price: "0.43", associate_trades: [], outcome: "Yes", created_at: 1, expiration: "2", order_type: "GTC" }]
+        };
+      }
+    }
+  });
+  await context.service.init({ privateKey: "0xabc" });
+
+  const activeOrders = await context.service.listActiveOrdersPendingConfirmation();
+  const orderStatus = await context.service.reconcileOrderStatus({
+    orderId: "open-data-1",
+    maxAttempts: 1,
+    retryDelayMs: 25
+  });
+
+  assert.equal(activeOrders.length, 1);
+  assert.equal(activeOrders[0]!.id, "open-data-1");
+  assert.equal(orderStatus, "pending");
+  await context.service.disconnect();
+});
+
+test("OrderService tolerates null open-order payloads during reconciliation", async () => {
+  const context = createTestContext({
+    overrides: {
+      async getOpenOrders(): Promise<null> {
+        return null;
+      },
+      async getTrades(): Promise<Array<{ status: string; taker_order_id?: string; maker_orders?: { order_id: string }[] }>> {
+        return [];
+      }
+    }
+  });
+  await context.service.init({ privateKey: "0xabc" });
+
+  const orderStatus = await context.service.reconcileOrderStatus({
+    orderId: "missing-open-orders",
+    maxAttempts: 1,
+    retryDelayMs: 25
+  });
+
+  assert.equal(orderStatus, "failed");
+  await context.service.disconnect();
+});
+
 test("OrderService cancels an order by id", async () => {
   let cancelledOrderId: string | null = null;
   const context = createTestContext({
