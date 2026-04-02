@@ -27,6 +27,7 @@ import type {
   PostOrderOptions,
   PostedOrder,
   PostedOrderWithStatus,
+  ReconcileOrderStatusOptions,
   TradeInfo,
   WaitForOrderConfirmationOptions
 } from "./order.types.ts";
@@ -36,6 +37,8 @@ import type {
  */
 
 const DEFAULT_SIGNATURE_TYPE: SignatureType = 1;
+const TRADE_RECHECK_ATTEMPTS = 5;
+const TRADE_RECHECK_DELAY_MS = 250;
 
 /**
  * @section types
@@ -277,14 +280,18 @@ export class OrderService {
     return sellableSize;
   }
 
-  private async cancelOrderSafe(orderId: string): Promise<void> {
+  private async cancelOrderSafe(orderId: string): Promise<boolean> {
     this.ensureInitialized();
+    let isCancelled = false;
     try {
-      await this.clobClient!.cancelOrder({ orderID: orderId });
+      const cancelResponse = await this.clobClient!.cancelOrder({ orderID: orderId });
+      const cancelledOrderIds = cancelResponse.cancelled ?? [];
+      isCancelled = cancelledOrderIds.includes(orderId);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.logger.warn(`[ORDER] Failed to cancel order ${orderId}: ${reason}`);
     }
+    return isCancelled;
   }
 
   private getOrderSide(operation: "buy" | "sell"): Side {
@@ -380,25 +387,64 @@ export class OrderService {
     return trade;
   }
 
-  private async recheckOrderStatus(order: PostedOrder, shouldCancelOnTimeout: boolean): Promise<OrderStatus> {
-    this.ensureInitialized();
-    const trades = await this.clobClient!.getTrades();
-    const trade = this.findTradeForOrder(trades, order.id);
+  private findPendingOpenOrderById(pendingConfirmationOrders: PendingConfirmationOrder[], orderId: string): PendingConfirmationOrder | null {
+    const pendingConfirmationOrder = pendingConfirmationOrders.find((candidateOrder) => candidateOrder.id === orderId) ?? null;
+    return pendingConfirmationOrder;
+  }
+
+  private async resolveTrackedOrderStatus(
+    orderId: string,
+    maxAttempts: number,
+    retryDelayMs: number
+  ): Promise<OrderStatus> {
     let orderStatus: OrderStatus = "failed";
-    if (trade) {
-      if (trade.status === "CONFIRMED") {
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const pendingConfirmationOrders = await this.clobClient!.getOpenOrders();
+      const pendingConfirmationOrder = this.findPendingOpenOrderById(pendingConfirmationOrders, orderId);
+      const trades = await this.clobClient!.getTrades();
+      const trade = this.findTradeForOrder(trades, orderId);
+      const hasPendingOpenOrder = pendingConfirmationOrder !== null;
+      const hasPendingTrade = trade !== null && this.isPendingTradeStatus(trade.status);
+      const shouldRetryPendingStatus = attempt < maxAttempts - 1 && (hasPendingOpenOrder || hasPendingTrade);
+
+      if (trade?.status === "CONFIRMED") {
         orderStatus = "confirmed";
-      }
-      if (trade.status === "FAILED") {
+      } else if (trade?.status === "FAILED") {
+        orderStatus = "failed";
+      } else if (hasPendingOpenOrder || hasPendingTrade) {
+        orderStatus = "pending";
+      } else {
         orderStatus = "failed";
       }
-      if (this.isPendingTradeStatus(trade.status)) {
-        orderStatus = "failed";
+
+      if (shouldRetryPendingStatus) {
+        await this.clock.sleep(retryDelayMs);
+      } else {
+        break;
       }
     }
-    if (orderStatus === "failed" && shouldCancelOnTimeout && !order.paperMode) {
-      await this.cancelOrderSafe(order.id);
+
+    return orderStatus;
+  }
+
+  private async recheckOrderStatus(
+    order: PostedOrder,
+    shouldCancelOnPending: boolean
+  ): Promise<OrderStatus> {
+    this.ensureInitialized();
+    const reconcileOrderStatusOptions: ReconcileOrderStatusOptions = {
+      orderId: order.id,
+      shouldCancelOnPending,
+    };
+
+    if (order.paperMode !== undefined) {
+      Object.assign(reconcileOrderStatusOptions, {
+        paperMode: order.paperMode,
+      });
     }
+
+    const orderStatus = await this.reconcileOrderStatus(reconcileOrderStatusOptions);
     return orderStatus;
   }
 
@@ -453,6 +499,25 @@ export class OrderService {
     return isCancelled;
   }
 
+  public async reconcileOrderStatus(options: ReconcileOrderStatusOptions): Promise<OrderStatus> {
+    this.ensureInitialized();
+    const maxAttempts = options.maxAttempts ?? TRADE_RECHECK_ATTEMPTS;
+    const retryDelayMs = options.retryDelayMs ?? TRADE_RECHECK_DELAY_MS;
+    const shouldCancelPending = options.shouldCancelOnPending ?? false;
+    let orderStatus: OrderStatus = "confirmed";
+
+    if (!options.paperMode) {
+      orderStatus = await this.resolveTrackedOrderStatus(options.orderId, maxAttempts, retryDelayMs);
+
+      if (orderStatus === "pending" && shouldCancelPending) {
+        const isCancelled = await this.cancelOrderSafe(options.orderId);
+        orderStatus = isCancelled ? "cancelled" : "pending";
+      }
+    }
+
+    return orderStatus;
+  }
+
   public async postOrder(options: PostOrderOptions): Promise<PostedOrder | null> {
     this.ensureInitialized();
     let postedOrder: PostedOrder | null = null;
@@ -478,7 +543,7 @@ export class OrderService {
   public async waitForOrderConfirmation(options: WaitForOrderConfirmationOptions): Promise<PostedOrderWithStatus> {
     this.ensureInitialized();
     const timeoutMs = options.timeoutMs ?? config.DEFAULT_ORDER_CONFIRMATION_TIMEOUT_MS;
-    const shouldCancelOnTimeout = options.shouldCancelOnTimeout ?? true;
+    const shouldCancelOnPending = options.shouldCancelOnTimeout ?? true;
     const startedAt = this.clock.now();
     const result = await new Promise<PostedOrderWithStatus>((resolve) => {
       let isResolved = false;
@@ -505,13 +570,13 @@ export class OrderService {
         }
       });
       const removeReconnectListener = this.tracker.addReconnectListener(async () => {
-        const status = await this.recheckOrderStatus(options.order, shouldCancelOnTimeout);
+        const status = await this.recheckOrderStatus(options.order, shouldCancelOnPending);
         const error = status === "confirmed" ? undefined : new Error(`Order ${options.order.id} did not confirm after reconnect recheck.`);
         finish(status, error);
       });
       timeoutId = setTimeout(() => {
         void (async () => {
-          const status = options.order.paperMode ? "confirmed" : await this.recheckOrderStatus(options.order, shouldCancelOnTimeout);
+          const status = options.order.paperMode ? "confirmed" : await this.recheckOrderStatus(options.order, shouldCancelOnPending);
           const error = status === "confirmed" ? undefined : new Error(`Order ${options.order.id} timed out after ${timeoutMs}ms.`);
           finish(status, error);
         })();

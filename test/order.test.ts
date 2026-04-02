@@ -155,6 +155,15 @@ test("OrderService posts taker order and confirms through user websocket", async
 
 test("OrderService timeout path rechecks order and cancels when requested", async () => {
   let cancelOrderCalls = 0;
+  const sleepCalls: number[] = [];
+  const clock: Clock = {
+    now(): number {
+      return Date.now();
+    },
+    async sleep(milliseconds: number): Promise<void> {
+      sleepCalls.push(milliseconds);
+    }
+  };
   const context = createTestContext({
     overrides: {
       async cancelOrder(): Promise<{ cancelled?: string[] }> {
@@ -167,7 +176,8 @@ test("OrderService timeout path rechecks order and cancels when requested", asyn
       async getTrades(): Promise<Array<{ status: string; taker_order_id?: string; maker_orders?: { order_id: string }[] }>> {
         return [{ status: "MATCHED", taker_order_id: "order-timeout", maker_orders: [] }];
       }
-    }
+    },
+    clock
   });
   await context.service.init({ privateKey: "0xabc" });
 
@@ -175,8 +185,142 @@ test("OrderService timeout path rechecks order and cancels when requested", asyn
   const confirmation = await context.service.waitForOrderConfirmation({ order: postedOrder!, timeoutMs: 10, shouldCancelOnTimeout: true });
 
   assert.equal(confirmation.ok, false);
-  assert.equal(confirmation.status, "failed");
+  assert.equal(confirmation.status, "cancelled");
   assert.equal(cancelOrderCalls > 0, true);
+  assert.equal(sleepCalls.length, 4);
+  await context.service.disconnect();
+});
+
+test("OrderService timeout recheck promotes pending trade states that later confirm", async () => {
+  let tradeReads = 0;
+  let cancelOrderCalls = 0;
+  const sleepCalls: number[] = [];
+  const clock: Clock = {
+    now(): number {
+      return Date.now();
+    },
+    async sleep(milliseconds: number): Promise<void> {
+      sleepCalls.push(milliseconds);
+    }
+  };
+  const context = createTestContext({
+    overrides: {
+      async cancelOrder(): Promise<{ cancelled?: string[] }> {
+        cancelOrderCalls += 1;
+        return { cancelled: ["order-timeout-confirmed"] };
+      },
+      async createAndPostMarketOrder(): Promise<{ success?: boolean; orderID?: string }> {
+        return { success: true, orderID: "order-timeout-confirmed" };
+      },
+      async getTrades(): Promise<Array<{ status: string; taker_order_id?: string; maker_orders?: { order_id: string }[] }>> {
+        tradeReads += 1;
+
+        if (tradeReads < 3) {
+          return [{ status: "MATCHED", taker_order_id: "order-timeout-confirmed", maker_orders: [] }];
+        }
+
+        return [{ status: "CONFIRMED", taker_order_id: "order-timeout-confirmed", maker_orders: [] }];
+      }
+    },
+    clock
+  });
+  await context.service.init({ privateKey: "0xabc" });
+
+  const postedOrder = await context.service.postOrder({ market: createMarket(), size: 1, price: 0.5, direction: "up", op: "buy", executionType: "taker" });
+  const confirmation = await context.service.waitForOrderConfirmation({ order: postedOrder!, timeoutMs: 10, shouldCancelOnTimeout: true });
+
+  assert.equal(confirmation.ok, true);
+  assert.equal(confirmation.status, "confirmed");
+  assert.equal(cancelOrderCalls, 0);
+  assert.equal(sleepCalls.length, 2);
+  await context.service.disconnect();
+});
+
+test("OrderService exposes explicit reconciliation by order id", async () => {
+  let tradeReads = 0;
+  const sleepCalls: number[] = [];
+  const clock: Clock = {
+    now(): number {
+      return Date.now();
+    },
+    async sleep(milliseconds: number): Promise<void> {
+      sleepCalls.push(milliseconds);
+    }
+  };
+  const context = createTestContext({
+    overrides: {
+      async getOpenOrders(): Promise<Array<{ id: string; status: string; owner: string; maker_address: string; market: string; asset_id: string; side: string; original_size: string; size_matched: string; price: string; associate_trades: string[]; outcome: string; created_at: number; expiration: string; order_type: string }>> {
+        return [];
+      },
+      async getTrades(): Promise<Array<{ status: string; taker_order_id?: string; maker_orders?: { order_id: string }[] }>> {
+        tradeReads += 1;
+
+        if (tradeReads < 2) {
+          return [{ status: "MATCHED", taker_order_id: "order-reconcile", maker_orders: [] }];
+        }
+
+        return [{ status: "CONFIRMED", taker_order_id: "order-reconcile", maker_orders: [] }];
+      }
+    },
+    clock
+  });
+  await context.service.init({ privateKey: "0xabc" });
+
+  const orderStatus = await context.service.reconcileOrderStatus({
+    orderId: "order-reconcile",
+    maxAttempts: 3,
+    retryDelayMs: 25,
+  });
+
+  assert.equal(orderStatus, "confirmed");
+  assert.equal(sleepCalls.length, 1);
+  await context.service.disconnect();
+});
+
+test("OrderService explicit reconciliation returns pending for open orders", async () => {
+  let cancelOrderCalls = 0;
+  const sleepCalls: number[] = [];
+  const clock: Clock = {
+    now(): number {
+      return Date.now();
+    },
+    async sleep(milliseconds: number): Promise<void> {
+      sleepCalls.push(milliseconds);
+    }
+  };
+  const context = createTestContext({
+    overrides: {
+      async cancelOrder(input: { orderID: string }): Promise<{ cancelled?: string[] }> {
+        cancelOrderCalls += 1;
+        return { cancelled: [input.orderID] };
+      },
+      async getOpenOrders(): Promise<Array<{ id: string; status: string; owner: string; maker_address: string; market: string; asset_id: string; side: string; original_size: string; size_matched: string; price: string; associate_trades: string[]; outcome: string; created_at: number; expiration: string; order_type: string }>> {
+        return [{ id: "order-open", status: "LIVE", owner: "owner-1", maker_address: "maker-1", market: "market-1", asset_id: "asset-1", side: "BUY", original_size: "5", size_matched: "0", price: "0.43", associate_trades: [], outcome: "Yes", created_at: 1, expiration: "2", order_type: "GTC" }];
+      },
+      async getTrades(): Promise<Array<{ status: string; taker_order_id?: string; maker_orders?: { order_id: string }[] }>> {
+        return [];
+      }
+    },
+    clock
+  });
+  await context.service.init({ privateKey: "0xabc" });
+
+  const pendingStatus = await context.service.reconcileOrderStatus({
+    orderId: "order-open",
+    maxAttempts: 2,
+    retryDelayMs: 25,
+  });
+  const cancelledStatus = await context.service.reconcileOrderStatus({
+    orderId: "order-open",
+    shouldCancelOnPending: true,
+    maxAttempts: 2,
+    retryDelayMs: 25,
+  });
+
+  assert.equal(pendingStatus, "pending");
+  assert.equal(cancelledStatus, "cancelled");
+  assert.equal(cancelOrderCalls, 1);
+  assert.equal(sleepCalls.length, 2);
   await context.service.disconnect();
 });
 

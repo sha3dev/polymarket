@@ -10,7 +10,7 @@ export type Operation = "buy" | "sell";
 
 export type ExecutionType = "maker" | "taker";
 
-export type OrderStatus = "confirmed" | "cancelled" | "failed";
+export type OrderStatus = "pending" | "confirmed" | "cancelled" | "failed";
 
 export type InitializeOrderServiceOptions = {
   readonly privateKey: string;
@@ -34,6 +34,14 @@ export type PostedOrder = PostOrderOptions & { readonly id: string; readonly dat
 export type WaitForOrderConfirmationOptions = { readonly order: PostedOrder; readonly timeoutMs?: number; readonly shouldCancelOnTimeout?: boolean };
 
 export type PostedOrderWithStatus = PostedOrder & { readonly ok: boolean; readonly status: OrderStatus; readonly latency: number; readonly error?: Error };
+
+export type ReconcileOrderStatusOptions = {
+  readonly orderId: string;
+  readonly paperMode?: boolean;
+  readonly shouldCancelOnPending?: boolean;
+  readonly maxAttempts?: number;
+  readonly retryDelayMs?: number;
+};
 
 export type OrderMessage = { readonly id: string; readonly status: OrderStatus };
 

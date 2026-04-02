@@ -40,5 +40,6 @@ export type {
   PostOrderOptions,
   PostedOrder,
   PostedOrderWithStatus,
+  ReconcileOrderStatusOptions,
   WaitForOrderConfirmationOptions
 } from "./order/order.types.ts";
